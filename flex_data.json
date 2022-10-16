@@ -1,0 +1,136 @@
+{
+    "1": {
+        "type": "bubble",
+        "header": {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
+              "text": "Setting voice msg as alarm..."
+            }
+          ],
+          "margin": "sm",
+          "borderWidth": "0.5px",
+          "justifyContent": "center",
+          "alignItems": "center",
+          "position": "relative"
+        },
+        "body": {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "box",
+              "layout": "vertical",
+              "contents": [
+                {
+                  "type": "text",
+                  "text": "use this voice msg as alarm?"
+                },
+                {
+                  "type": "box",
+                  "layout": "horizontal",
+                  "contents": [
+                    {
+                      "type": "button",
+                      "style": "primary",
+                      "action": {
+                        "type": "postback",
+                        "label": "yes",
+                        "data": "setVoice=yes"
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "style": "secondary",
+                      "action": {
+                        "type": "postback",
+                        "label": "no",
+                        "data": "setVoice=no"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "spacing": "lg",
+              "backgroundColor": "#FFFFFF",
+              "borderWidth": "10px",
+              "cornerRadius": "10px"
+            },
+            {
+              "type": "box",
+              "layout": "vertical",
+              "contents": [
+                {
+                  "type": "text",
+                  "text": "alarm time: "
+                },
+                {
+                  "type": "button",
+                  "style": "primary",
+                  "action": {
+                    "type": "datetimepicker",
+                    "label": "select alarm time",
+                    "data": "setTimer=yes",
+                    "mode": "datetime",
+                    "initial": "2017-12-25t00:00",
+                    "max": "2018-01-24t23:59",
+                    "min": "2017-12-25t00:00"
+                  }
+                }
+              ],
+              "spacing": "lg",
+              "backgroundColor": "#FFFFFF",
+              "borderWidth": "10px",
+              "cornerRadius": "10px"
+            }
+          ],
+          "paddingBottom": "50px",
+          "paddingTop": "30px",
+          "spacing": "xxl",
+          "margin": "none"
+        },
+        "footer": {
+          "type": "box",
+          "layout": "horizontal",
+          "contents": [
+            {
+              "type": "button",
+              "style": "primary",
+              "action": {
+                "type": "postback",
+                "label": "confirm",
+                "data": "setting=yes"
+              }
+            },
+            {
+              "type": "button",
+              "style": "secondary",
+              "action": {
+                "type": "postback",
+                "label": "cancel",
+                "data": "setting=no"
+              }
+            }
+          ],
+          "paddingAll": "10px",
+          "paddingStart": "90px",
+          "paddingEnd": "30px",
+          "paddingTop": "30px",
+          "paddingBottom": "30px"
+        },
+        "styles": {
+          "header": {
+            "backgroundColor": "#ffaaaa"
+          },
+          "body": {
+            "backgroundColor": "#aaffaa",
+            "separator": false
+          },
+          "footer": {
+            "backgroundColor": "#aaaaff"
+          }
+        }
+      }
+}
