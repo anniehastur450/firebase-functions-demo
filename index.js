@@ -15,7 +15,6 @@ with the following json format
 
 const path = require('path');
 const fs = require('fs');
-const request = require('request');
 const printf = require('printf');
 
 ////////////////// FIREBASE /////////////////////
