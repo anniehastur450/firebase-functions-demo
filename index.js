@@ -32,7 +32,6 @@ const line = require("@line/bot-sdk");
 const client = new line.Client(functions.config().secrets.lineClientConfig);
 
 var msgId; // used it as naming standard for audio records, only message type has it, not postback type
-var userText; // only message type has it
 var userAction; // event.type for postback type, evenet.message.type for message type
 
 // quickReply has 1 extra attribute => "quickReply"
@@ -45,15 +44,15 @@ exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequ
     console.log('req host', request.get('host'))
     console.log('req origin', request.get('origin'))
 
-    var a = request.query.fileName;
-    if (!a) {
+    var filename = request.query.file;
+    if (!filename) {
         response.sendStatus(404)
         return
     }
     response.setHeader('Content-Type', 'audio/mp4');
 
     (async () => {
-        var file = bucket.file(a)
+        var file = bucket.file(filename)
         var [buffer] = await file.download()
         response.send(buffer)
     })().catch(err => {
@@ -72,6 +71,7 @@ function timeParser(timeObj) {
     )
     return datetime
 }
+
 exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
 
     // decipher Webhook event sent by LineBot, that triggered by every user input
@@ -82,6 +82,8 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
     const body = request.body;
 
     try {
+        console.log('\n\nevents length:', body.events.length);
+
         for (const event of body.events) {
             /* process webhook event now */
 
@@ -93,9 +95,9 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
             datetime = timeParser(d)
 
             console.log(
-                "\n\n", "----------------------------------------------------------------------------\n",
+                "\n\n----------------------------------------------------------------------------\n",
                 "time: ", datetime, "\n\n",
-                event, "\n\n"
+                "event: ", event, "\n\n"
             )
 
             // decipher type of message user has sent, store into userAction variable
@@ -492,30 +494,23 @@ async function getLatestAudioMsgData(request) {
 async function uploadAudioMsg(msgId, filename, duration) {
     var stream = await client.getMessageContent(msgId);
 
-    var pathname = await new Promise((resolve, reject) => {
-        // console.log('getting audio message...');
-        var pathname = `/tmp/${filename}`; //
-        const writable = fs.createWriteStream(pathname);
-        stream.pipe(writable);
-        stream.on('end', () => resolve(pathname));
-        stream.on('error', reject);
-    });
-    // console.log(`uploading audio message to ${pathname}...`);
-
-    var pathname_dest = pathname.slice(pathname.lastIndexOf('/') + 1);
-
-    // console.log(pathname);
-    // console.log(pathname_dest);
-
-    await bucket.upload(pathname, {
-        destination: pathname_dest,
+    var file = bucket.file(filename);
+    var writeStream = file.createWriteStream({
         metadata: {
             contentType: "audio/mp4",
+            metadata: { duration }
         },
-        customMetadata: duration
-    })
+    });
 
-    // console.log(`done uploading.`);
+    // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
+    await new Promise((resolve, reject) => {
+        console.log(`uploading ${filename}...`);
+        stream.pipe(writeStream)
+            .on('error', reject)
+            .on('finish', resolve);
+    });
+
+    console.log(`done uploading ${filename}.`);
 
     var url = await getAudioMsgUrl(filename);
 
@@ -524,8 +519,6 @@ async function uploadAudioMsg(msgId, filename, duration) {
 }
 
 async function getAudioMsgUrl(filename) {
-    var pathname = `/tmp/${filename}`;
-    var pathname_dest = pathname.slice(pathname.lastIndexOf('/') + 1);
 
     // const urlOptions = {
     //     version: "v4",
@@ -550,7 +543,7 @@ async function getAudioMsgUrl(filename) {
 function getPubUrl(request, filename) {
     var protocol = request.protocol;
     var host = request.get('host');
-    var url = `${protocol}://${host}/${project}/${region}/publicizeLocalFile?fileName=${filename}`
+    var url = `${protocol}://${host}/${project}/${region}/publicizeLocalFile?file=${encodeURIComponent(filename)}`
     console.log(filename, ": ", url)
     return url
 }
