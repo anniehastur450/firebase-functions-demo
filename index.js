@@ -31,11 +31,6 @@ const bucket = admin.storage().bucket();
 const line = require("@line/bot-sdk");
 const client = new line.Client(functions.config().secrets.lineClientConfig);
 
-const LINE_HEADER = {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer {'" + functions.config().secrets.lineClientConfig.channelAccessToken + "'}"
-}
-
 var msgId; // used it as naming standard for audio records, only message type has it, not postback type
 var userText; // only message type has it
 var userAction; // event.type for postback type, evenet.message.type for message type
@@ -403,54 +398,32 @@ async function createRichMenu() {
 
 function replyFlexMsg(replytoken, flex_data) {
     console.log("token used in ", arguments.callee.name, ": ", replytoken)
-    return request.post({
-        uri: `https://api.line.me/v2/bot/message/reply`,
-        headers: LINE_HEADER,
-        body: JSON.stringify({
-            replyToken: replytoken,
-            messages: [
-                {
-                    "type": "flex",
-                    "altText": "this is a flex message",
-                    "contents": flex_data
-
-                }
-            ]
-        })
-    });
+    return client.replyMessage(replytoken,
+        {
+            "type": "flex",
+            "altText": "this is a flex message",
+            "contents": flex_data
+        }
+    );
 }
 
 function pushMsg(userId, textPrompt) {
-    return request.post({
-        uri: `https://api.line.me/v2/bot/message/push`,
-        headers: LINE_HEADER,
-        body: JSON.stringify({
-            "to": userId,
-            messages: [
-                {
-                    "type": "text",
-                    "text": textPrompt
-                }
-            ]
-        })
-    });
+    return client.pushMessage(userId,
+        {
+            "type": "text",
+            "text": textPrompt
+        }
+    );
 }
 
 
 function replyTextMsg(replytoken, textfrom) {
-    return request.post({
-        uri: `https://api.line.me/v2/bot/message/reply`,
-        headers: LINE_HEADER,
-        body: JSON.stringify({
-            replyToken: replytoken,
-            messages: [
-                {
-                    type: "text",
-                    text: textfrom
-                }
-            ]
-        })
-    });
+    return client.replyMessage(replytoken,
+        {
+            type: "text",
+            text: textfrom
+        }
+    );
 }
 
 confBackendData = [
@@ -474,49 +447,37 @@ function replyConfirmTemplate(replytoken, backendData) {
     promptMsg = backendData[0]
     yesAction = backendData[1]
     noAction = backendData[2]
-    return request.post({
-        uri: `https://api.line.me/v2/bot/message/reply`,
-        headers: LINE_HEADER,
-        body: JSON.stringify({
-            replyToken: replytoken,
-            messages: [
-                {
-                    "type": "template",
-                    "altText": "confirm template",
-                    "template": {
-                        "type": "confirm",
-                        "text": promptMsg,
-                        "actions": [
-                            yesAction,
-                            noAction
-                        ]
-                    }
-                }
-            ]
-        })
-    });
+    return client.replyMessage(replytoken,
+        {
+            "type": "template",
+            "altText": "confirm template",
+            "template": {
+                "type": "confirm",
+                "text": promptMsg,
+                "actions": [
+                    yesAction,
+                    noAction
+                ]
+            }
+        }
+    );
 }
 
 
 function replyAudioMsg(replytoken, textfrom, audio_url, audio_duration) {
-    return request.post({
-        uri: `https://api.line.me/v2/bot/message/reply`,
-        headers: LINE_HEADER,
-        body: JSON.stringify({
-            replyToken: replytoken,
-            messages: [
-                {
-                    type: "text",
-                    text: textfrom
-                },
-                {
-                    type: "audio",
-                    originalContentUrl: audio_url,
-                    duration: audio_duration
-                }
-            ]
-        })
-    });
+    return client.replyMessage(replytoken,
+        [
+            {
+                type: "text",
+                text: textfrom
+            },
+            {
+                type: "audio",
+                originalContentUrl: audio_url,
+                duration: audio_duration
+            }
+        ]
+    );
 }
 
 /////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
