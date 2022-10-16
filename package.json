@@ -15,10 +15,9 @@
   "dependencies": {
     "@line/bot-sdk": "^7.5.2",
     "firebase-admin": "^10.0.2",
-    "firebase-functions": "^4.0.0-rc.0"
-  },
-  "devDependencies": {
-    "firebase-functions-test": "^2.4.0"
+    "firebase-functions": "^4.0.0-rc.0",
+    "printf": "^0.6.1",
+    "request": "^2.88.2"
   },
   "private": true
 }

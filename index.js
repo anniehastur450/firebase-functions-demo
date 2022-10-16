@@ -15,8 +15,9 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 ////////////////// LINE /////////////////////
-const channelToken = "sUJgmvAgFNLPW7XaCShrdk+SmR9rA6wqAHrQeK1d1rdVZf50b+NDuD2QIZQLoyBpMMoB72IzjTsidWmu/IqVknWYxtc0gNQTBgOmAgvt/T90v9qyqXwJqFQBHgo8ET31QbbTsEBDdQAONtK1OIX21gdB04t89/1O/w1cDnyilFU=";
-const channelSecret = "ae16a6e06b9645e58da9da8beef250aa"
+/* for locals, create a .runtimeconfig.json file for functions.config() to read */
+const channelToken = functions.config().secrets.lineClientConfig.channelAccessToken;
+const channelSecret = functions.config().secrets.lineClientConfig.channelSecret;
 const line = require("@line/bot-sdk");
 const config = {
     channelAccessToken: channelToken,
