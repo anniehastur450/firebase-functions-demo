@@ -86,163 +86,174 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
     /** @type {line.WebhookRequestBody} */
     const body = request.body;
 
-    /** @type {line.WebhookEvent} */
-    var event = request.body.events[0]
-    userId = event.source.userId;
-    replyToken = event.replyToken;
-    timestamp = event.timestamp;
-    var userText = null;
-    var d = new Date(timestamp);
-    datetime = timeParser(d)
+    try {
+        for (const event of body.events) {
+            /* process webhook event now */
 
-    console.log(
-        "\n\n", "----------------------------------------------------------------------------\n",
-        "time: ", datetime, "\n\n",
-        event, "\n\n"
-    )
+            userId = event.source.userId;
+            replyToken = event.replyToken;
+            timestamp = event.timestamp;
+            var userText = null;
+            var d = new Date(timestamp);
+            datetime = timeParser(d)
 
-    // decipher type of message user has sent, store into userAction variable
-    if (event.type === "message") {
-        userAction = event.message.type
-        msgId = event.message.id;
-        if (event.message.type === "text")
-            userText = event.message.text
-    } else {
-        userAction = event.type
-        if (userAction === "postback") {
-            var eventPbCode = event.postback.data
-        }
-    }
+            console.log(
+                "\n\n", "----------------------------------------------------------------------------\n",
+                "time: ", datetime, "\n\n",
+                event, "\n\n"
+            )
 
-    // store userdata to database (chat- & postback-history)
-    var currUser = db.collection("users").doc(userId.toString())
-    var pbLogs = await updateToDatebase(currUser, userId, userAction, userText, timestamp, datetime, eventPbCode, replyToken)
-    var name = await checkUserInDatebase(userId)
+            // decipher type of message user has sent, store into userAction variable
+            if (event.type === "message") {
+                userAction = event.message.type
+                msgId = event.message.id;
+                if (event.message.type === "text")
+                    userText = event.message.text
+            } else {
+                userAction = event.type
+                if (userAction === "postback") {
+                    var eventPbCode = event.postback.data
+                }
+            }
 
-    // check previous userAction contains postback or not
-    var latestPb = null
-    var idxPb = -1
-    if (!pbLogs.empty) {
-        idxPb = (await currUser.collection("postback-history").get()).size
-        idxPb = printf("%02d", idxPb)
-        var latestPb = await currUser.collection("postback-history").doc(`pb${idxPb}`).get()
-    }
+            // store userdata to database (chat- & postback-history)
+            var currUser = db.collection("users").doc(userId.toString())
+            var pbLogs = await updateToDatebase(currUser, userId, userAction, userText, timestamp, datetime, eventPbCode, replyToken)
+            var name = await checkUserInDatebase(userId)
 
-    // in case of user repeatedly making mistake of sending audio msg for a flex message,
-    // by storing the previous replytoken in database, using this, we're able to only send flex message once,
-    // bcuz the replytoken can only be used oncei
-    if (latestPb !== null) {
-        console.log("latest Postback: ", latestPb.data(), "\n\n")
-        latestPb_replytoken = latestPb.data().replyToken
-        latestPb_name = latestPb.data().name
-    }
+            // check previous userAction contains postback or not
+            var latestPb = null
+            var idxPb = -1
+            if (!pbLogs.empty) {
+                idxPb = (await currUser.collection("postback-history").get()).size
+                idxPb = printf("%02d", idxPb)
+                var latestPb = await currUser.collection("postback-history").doc(`pb${idxPb}`).get()
+            }
 
-    // proceed LineBot differently according to user input (aka. userAction)
-    if (userAction == "text") {
-        replyTextMsg(replyToken, `HelloText ${name}, ${userText}`)
-    }
-    else if (userAction == "audio") {
-        // upload audio msg
-        var duration = event.message.duration;
-        var filename = `audio_${datetime}.m4a`
-        var audio_url_online = await uploadAudioMsg(msgId, filename, duration)
-        var audio_url_local = getPubUrl(request, filename)
-        // console.log('audio_url: ', audio_url_local)
-        // reply flex msg, if latest postback = "recordVoice"
+            // in case of user repeatedly making mistake of sending audio msg for a flex message,
+            // by storing the previous replytoken in database, using this, we're able to only send flex message once,
+            // bcuz the replytoken can only be used oncei
+            if (latestPb !== null) {
+                console.log("latest Postback: ", latestPb.data(), "\n\n")
+                latestPb_replytoken = latestPb.data().replyToken
+                latestPb_name = latestPb.data().name
+            }
 
-        if (latestPb !== null && latestPb.data().pbCode === "recordVoice") {
-            /*
-            if the latest postback in database = "recordVoice", 
-            meaning in this current request,
-            user has already sent voice msg, 
-            hence now ask user further questions,
-            by using flex message
+            // proceed LineBot differently according to user input (aka. userAction)
+            if (userAction == "text") {
+                replyTextMsg(replyToken, `HelloText ${name}, ${userText}`)
+            }
+            else if (userAction == "audio") {
+                // upload audio msg
+                var duration = event.message.duration;
+                var filename = `audio_${datetime}.m4a`
+                var audio_url_online = await uploadAudioMsg(msgId, filename, duration)
+                var audio_url_local = getPubUrl(request, filename)
+                // console.log('audio_url: ', audio_url_local)
+                // reply flex msg, if latest postback = "recordVoice"
+
+                if (latestPb !== null && latestPb.data().pbCode === "recordVoice") {
+                    /*
+                    if the latest postback in database = "recordVoice", 
+                    meaning in this current request,
+                    user has already sent voice msg, 
+                    hence now ask user further questions,
+                    by using flex message
+                    */
+                    json = fs.readFileSync('flex_data.json');
+                    data = JSON.parse(json)
+                    // give identifier according to flex message postback
+                    // chg setVoice=yes Postback Data
+                    data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"] = `${latestPb_name}_setVoice=yes`
+                    // chg setVoice=no Postback Data
+                    data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setVoice=no`
+                    // printing to check
+                    console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"])
+                    console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"])
+                    // chg setTimer=yes Postback Data
+                    data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setTimer=yes`
+                    console.log(data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"])
+
+                    replyFlexMsg(latestPb_replytoken, data["1"])
+
+                }
+                else if (latestPb !== null && latestPb.data().pbCode.includes("setVoice=no")) {
+                    var data1 = await getLatestAudioMsgData(request)
+                    var alarm_name = data1[0]
+                    var alarm_url = data1[1]
+                    replyAudioMsg(latestPb_replytoken, `This is the alarm at same time, but new audio, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
+                    replyConfirmTemplate(replyToken, confBackendData[0])
+                }
+                // testing
+                else if (latestPb === null) {
+                    replyAudioMsg(replyToken, `HelloVoice ${name}`, audio_url_local, duration)
+                }
+            }
+            /* 
+            !!!! 
+            HERE to DECIPHER how user REACT to FLEX MSG, 
+            since every question require button pressing,
+            so every button creates "postback", 
+            and from looking at "postback",
+            we can decipher whether it is a yes or no, from every question
+            !!!! 
             */
-            json = fs.readFileSync('flex_data.json');
-            data = JSON.parse(json)
-            // give identifier according to flex message postback
-            // chg setVoice=yes Postback Data
-            data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"] = `${latestPb_name}_setVoice=yes`
-            // chg setVoice=no Postback Data
-            data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setVoice=no`
-            // printing to check
-            console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"])
-            console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"])
-            // chg setTimer=yes Postback Data
-            data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setTimer=yes`
-            console.log(data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"])
+            else if (userAction === "postback") {
 
-            replyFlexMsg(latestPb_replytoken, data["1"])
+                if (latestPb !== null &&
+                    (event.postback.data.includes("setVoice=yes") ||
+                        event.postback.data.includes("resetVoice=yes")
+                    )) {
+                    var data1 = await getLatestAudioMsgData(request)
+                    var alarm_name = data1[0]
+                    var alarm_url = data1[1]
+                    var data2 = await logAudioAlarmToDatebase(currUser, userId, timestamp, datetime, alarm_name, alarm_url)
+                    // if all went correctly, must data1 === data2
+                    console.log(`data1, name: ${data1[0]}, url: ${data1[1]}`)
+                    console.log(`data2, name: ${data2[0]}, url: ${data2[1]}`)
+                    pushMsg(userId, `You have selected this as an alarm`)
+                }
+                else if (latestPb !== null && event.postback.data.includes("setVoice=no")) {
+                    pushMsg(userId, `Please record voice message now AGAIN :(... as an alarm`)
+                }
+                else if (latestPb !== null && event.postback.data.includes("setTimer=yes")) {
+                    // update jsondata here too, for setVoice=no, add the info of latest timer to the file naming
+                    console.log(`latest Postback = ${latestPb_name}, its pbCode = ${latestPb.data().pbCode}`)
+                    timer = event.postback.params.datetime
+                    var d2 = new Date(timer)
+                    // mm hh DD MM
+                    alarmtime_cron = printf("%02d %02d %02d %02d *",
+                        d2.getMinutes(), d2.getHours(), d2.getDate(), (d2.getMonth() + 1))
+                    var alarmtime_normal = timeParser(d2)
+                    console.log(alarmtime_cron)
+                    var alarmdata = await getLatestAudioMsgData(request);
+                    var alarm_name = alarmdata[0]
+                    var alarm_url = alarmdata[1]
+                    replyAudioMsg(latestPb_replytoken, `This is the alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
+                }
+                else if (latestPb !== null && event.postback.data.includes("setting=yes")) {
+                    pushMsg(userId, `Congrats... you have sucessfully finished setting alarm :)`)
+                    var data1 = await getLatestAudioMsgData(request)
+                    var alarm_name = data1[0]
+                    var alarm_url = data1[1]
+                    replyAudioMsg(latestPb_replytoken, `Finally, your alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
+                }
+                else if (eventPbCode === "recordVoice") {
+                    pushMsg(userId, `Please record voice message now... as an alarm`)
+                }
 
-        }
-        else if (latestPb !== null && latestPb.data().pbCode.includes("setVoice=no")) {
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            replyAudioMsg(latestPb_replytoken, `This is the alarm at same time, but new audio, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-            replyConfirmTemplate(replyToken,confBackendData[0])
-        }
-        // testing
-        else if (latestPb === null) {
-            replyAudioMsg(replyToken, `HelloVoice ${name}`, audio_url_local, duration)
-        }
-    }
-    /* 
-    !!!! 
-    HERE to DECIPHER how user REACT to FLEX MSG, 
-    since every question require button pressing,
-    so every button creates "postback", 
-    and from looking at "postback",
-    we can decipher whether it is a yes or no, from every question
-    !!!! 
-    */
-    else if (userAction === "postback") {
+            }
 
-        if (latestPb !== null && 
-            ( event.postback.data.includes("setVoice=yes") ||
-              event.postback.data.includes("resetVoice=yes")
-            )) {
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            var data2 = await logAudioAlarmToDatebase(currUser, userId, timestamp, datetime, alarm_name, alarm_url)
-            // if all went correctly, must data1 === data2
-            console.log(`data1, name: ${data1[0]}, url: ${data1[1]}`)
-            console.log(`data2, name: ${data2[0]}, url: ${data2[1]}`)
-            pushMsg(userId, `You have selected this as an alarm`)
-        }
-        else if (latestPb !== null && event.postback.data.includes("setVoice=no")) {
-            pushMsg(userId, `Please record voice message now AGAIN :(... as an alarm`)
-        }
-        else if (latestPb !== null && event.postback.data.includes("setTimer=yes")) {
-            // update jsondata here too, for setVoice=no, add the info of latest timer to the file naming
-            console.log(`latest Postback = ${latestPb_name}, its pbCode = ${latestPb.data().pbCode}`)
-            timer = event.postback.params.datetime
-            var d2 = new Date(timer)
-            // mm hh DD MM
-            alarmtime_cron = printf("%02d %02d %02d %02d *",
-                d2.getMinutes(), d2.getHours(), d2.getDate(), (d2.getMonth() + 1))
-            var alarmtime_normal = timeParser(d2)
-            console.log(alarmtime_cron)
-            var alarmdata = await getLatestAudioMsgData(request);
-            var alarm_name = alarmdata[0]
-            var alarm_url = alarmdata[1]
-            replyAudioMsg(latestPb_replytoken, `This is the alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-        }
-        else if (latestPb !== null && event.postback.data.includes("setting=yes")){
-            pushMsg(userId, `Congrats... you have sucessfully finished setting alarm :)`)
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            replyAudioMsg(latestPb_replytoken, `Finally, your alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-        }
-        else if (eventPbCode === "recordVoice") {
-            pushMsg(userId, `Please record voice message now... as an alarm`)
+            return response.status(200).send(request.method);
+
         }
 
+    } catch (err) {
+        console.error(err);
+        return response.sendStatus(400);  /* terminate processing */
     }
 
-    return response.status(200).send(request.method);
+    return response.sendStatus(500);
 });
 
 function extractPbDataToArr(pbCode) {
