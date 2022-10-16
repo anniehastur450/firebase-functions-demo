@@ -25,6 +25,7 @@ const spec = { memory: "1GB" };
 admin.initializeApp();  // no need functions.config().firebase
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
+const project = process.env.GCLOUD_PROJECT;
 
 ////////////////// LINE /////////////////////
 const line = require("@line/bot-sdk");
@@ -547,9 +548,10 @@ async function getAudioMsgUrl(filename) {
 }
 
 function getPubUrl(request, filename) {
-    var host = request.get('host')
-    var url = `https://${host}/linemsgapi-v2/asia-east1/publicizeLocalFile?fileName=${filename}`
-    // console.log(filename, ": ", url)
+    var protocol = request.protocol;
+    var host = request.get('host');
+    var url = `${protocol}://${host}/${project}/${region}/publicizeLocalFile?fileName=${filename}`
+    console.log(filename, ": ", url)
     return url
 }
 
