@@ -1,4 +1,17 @@
-/* eslint-disable */
+
+/* for locals, create a .runtimeconfig.json file for functions.config() to read,
+with the following json format
+
+{
+    "secrets": {
+        "lineClientConfig": {
+            "channelAccessToken": {{ YOUR TOKEN }},
+            "channelSecret": {{ YOUR SECRET }}
+        }
+    }
+}
+
+*/
 
 const path = require('path');
 const fs = require('fs');
@@ -10,24 +23,17 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const region = 'asia-east1';
 const spec = { memory: "1GB" };
-admin.initializeApp(functions.config().firebase)
+admin.initializeApp();  // no need functions.config().firebase
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 ////////////////// LINE /////////////////////
-/* for locals, create a .runtimeconfig.json file for functions.config() to read */
-const channelToken = functions.config().secrets.lineClientConfig.channelAccessToken;
-const channelSecret = functions.config().secrets.lineClientConfig.channelSecret;
 const line = require("@line/bot-sdk");
-const config = {
-    channelAccessToken: channelToken,
-    channelSecret: channelSecret,
-};
-const client = new line.Client(config);
+const client = new line.Client(functions.config().secrets.lineClientConfig);
 
 const LINE_HEADER = {
     "Content-Type": "application/json",
-    "Authorization": "Bearer {'" + channelToken + "'}"
+    "Authorization": "Bearer {'" + functions.config().secrets.lineClientConfig.channelAccessToken + "'}"
 }
 
 var msgId; // used it as naming standard for audio records, only message type has it, not postback type
@@ -39,25 +45,25 @@ var userAction; // event.type for postback type, evenet.message.type for message
 
 createRichMenu();
 
-exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequest((request, respond) => {
+exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequest((request, response) => {
     console.log('request.query', request.query)
     console.log('req host', request.get('host'))
     console.log('req origin', request.get('origin'))
 
     var a = request.query.fileName;
     if (!a) {
-        respond.sendStatus(404)
+        response.sendStatus(404)
         return
     }
-    respond.setHeader('Content-Type', 'audio/mp4');
+    response.setHeader('Content-Type', 'audio/mp4');
 
     (async () => {
         var file = bucket.file(a)
         var [buffer] = await file.download()
-        respond.send(buffer)
+        response.send(buffer)
     })().catch(err => {
         console.error(err);
-        respond.sendStatus(404)
+        response.sendStatus(404)
     })
 })
 
@@ -71,9 +77,16 @@ function timeParser(timeObj) {
     )
     return datetime
 }
-exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, respond) => {
+exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
 
     // decipher Webhook event sent by LineBot, that triggered by every user input
+
+    // @type description https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#type
+    // line sdk types https://github.com/line/line-bot-sdk-nodejs/blob/master/lib/types.ts
+    /** @type {line.WebhookRequestBody} */
+    const body = request.body;
+
+    /** @type {line.WebhookEvent} */
     var event = request.body.events[0]
     userId = event.source.userId;
     replyToken = event.replyToken;
@@ -229,7 +242,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
     }
 
-    return respond.status(200).send(request.method);
+    return response.status(200).send(request.method);
 });
 
 function extractPbDataToArr(pbCode) {
