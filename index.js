@@ -31,6 +31,9 @@ const project = process.env.GCLOUD_PROJECT;
 const line = require("@line/bot-sdk");
 const client = new line.Client(functions.config().secrets.lineClientConfig);
 
+////////////////// I18N /////////////////////
+const i18n = require('./i18n');
+
 var msgId; // used it as naming standard for audio records, only message type has it, not postback type
 var userAction; // event.type for postback type, evenet.message.type for message type
 
