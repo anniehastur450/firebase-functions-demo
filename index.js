@@ -140,11 +140,11 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
             }
 
             var userLang = (await currUser.get())?.data();
-            console.log('lang',userLang)
+            console.log('lang', userLang)
             userLang = userLang.lang ?? 'en';
             if (userText == 'change lang') {
                 userLang = userLang == 'en' ? 'zh' : 'en';
-                await currUser.update({ lang: userLang });
+                await currUser.set({ lang: userLang }, { merge: true });
             }
 
             var __ = i18n.translate(userLang);
@@ -302,10 +302,10 @@ async function updateToDatebase(currUser, userId, userAction, userText, timestam
     pictureUrl = profile.pictureUrl;
 
     // add User Data
-    currUser.update({
+    currUser.set({
         "name": profileName,
         "profile pic": pictureUrl,
-    })
+    }, { merge: true })
 
     // add Chat History
     currUser.collection("chat-history").doc(datetime.toString()).set({
