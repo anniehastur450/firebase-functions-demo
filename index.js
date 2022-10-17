@@ -40,8 +40,6 @@ var userAction; // event.type for postback type, evenet.message.type for message
 // quickReply has 1 extra attribute => "quickReply"
 // https://developers.line.biz/en/docs/messaging-api/using-quick-reply/#set-quick-reply-buttons
 
-createRichMenu();
-
 exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequest((request, response) => {
     console.log('request.query', request.query)
     console.log('req host', request.get('host'))
@@ -347,69 +345,6 @@ async function checkUserInDatebase(userId) {
     else
         replyTextMsg(replyToken, "You are not the customer yet, hence now you will automatically become one, and shall never see this message again.")
     return name;
-}
-
-async function createRichMenu() {
-
-    // delete all richmenu, to update the new richmenu
-    var richmenus = await client.getRichMenuList()
-
-    for (let i = 0; i < richmenus.length; i++) {
-        var rm = richmenus[i].richMenuId
-        // console.log(rm)
-        client.deleteRichMenu(rm)
-    }
-
-    data = fs.readFileSync('richmenu_data.json');
-    json_data = JSON.parse(data)
-
-    const richmenu = {
-        "size": {
-            "width": json_data["width"],
-            "height": json_data["height"]
-        },
-        "selected": true,
-        "name": "Nice richmenu",
-        "chatBarText": "tap to open",
-        "areas": [
-            {
-                "bounds": json_data["bound1"],
-                "action": {
-                    "type": "postback",
-                    "label": "notifyToRecordAlarm",
-                    "data": "recordVoice",
-                    "displayText": "",
-                    "inputOption": "openVoice",
-                }
-            },
-            {
-                "bounds": json_data["bound2"],
-                "action": {
-                    "type": "message",
-                    "label": "2",
-                    "text": "2"
-                }
-            },
-            {
-                "bounds": json_data["bound3"],
-                "action": {
-                    "type": "message",
-                    "label": "3",
-
-
-
-                    "text": "3"
-                }
-            },
-
-        ]
-    }
-
-    const richMenuId = await client.createRichMenu(richmenu)
-    // console.log("richMenuId: " + richMenuId)
-    await client.setRichMenuImage(richMenuId, fs.readFileSync(path.join(__dirname, "./richmenu.png")))
-    await client.setDefaultRichMenu(richMenuId)
-
 }
 
 function replyFlexMsg(replytoken, flex_data) {
