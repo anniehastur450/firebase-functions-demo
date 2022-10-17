@@ -124,13 +124,13 @@ async function originalProcessing(event, request, response) {
         latestPb_name = latestPb.data().name
     }
 
-            var userLang = (await currUser.get())?.data();
-            console.log('lang', userLang)
-            userLang = userLang.lang ?? 'en';
-            if (userText == 'change lang') {
-                userLang = userLang == 'en' ? 'zh' : 'en';
-                await currUser.set({ lang: userLang }, { merge: true });
-            }
+    var userLang = (await currUser.get())?.data();
+    console.log('lang', userLang)
+    userLang = userLang.lang ?? 'en';
+    if (userText == 'change lang') {
+        userLang = userLang == 'en' ? 'zh' : 'en';
+        await currUser.set({ lang: userLang }, { merge: true });
+    }
 
     var __ = i18n.translate(userLang);
 
@@ -242,6 +242,125 @@ async function originalProcessing(event, request, response) {
 
 }
 
+function unexpected(errorMessage) {
+    throw new Error(errorMessage);
+}
+
+class DbUser {
+    /**
+     * @param {line.WebhookEvent} event
+     */
+    constructor(event) {
+        this.event = event;
+        this.userId = event.source.userId ?? unexpected('null userId');
+        this.replyToken = event.replyToken;
+        this.snapshotPromise = this.db.get();
+        // this.storedData = (async () => {  // the data in db if exists else empty obj
+        //     return (await this.snapshotPromise).data() ?? {};
+        // })();
+    }
+
+    // backgroundJobs = [];
+
+    get db() {
+        return db.collection('users').doc(this.userId);
+    }
+
+    async get(fieldPath) {
+        var snapshot = await this.snapshotPromise;
+        return snapshot.get(fieldPath);
+    }
+
+    async save(obj) {
+        return await this.db.set(obj, { merge: true });
+    }
+
+    replyTextMsg(textfrom) {
+        return client.replyMessage(this.replyToken,
+            {
+                type: "text",
+                text: textfrom
+            }
+        );
+    }
+
+    replyTextMsg2(textfrom, quickReply) {
+        return client.replyMessage(this.replyToken,
+            {
+                type: "text",
+                text: textfrom,
+                quickReply: {
+                    'items': quickReply
+                }
+            }
+        );
+    }
+
+    async changeLang() {
+        var __ = await this.getTranslator();
+
+        this.userLang = this.userLang == 'en' ? 'zh' : 'en';
+        await this.save({ lang: this.userLang });
+        __.lang = this.userLang;
+        return await this.replyTextMsg(__('reply.chosenLang'));
+    }
+
+    async getTranslator() {
+        if (this.__) return this.__;
+        this.userLang = await this.get('lang') ?? 'en';
+        this.__ = i18n.translate(this.userLang);
+        return this.__;
+    }
+
+    async doAction(userAction) {
+        const event = this.event;
+        var __ = await this.getTranslator();
+
+        switch (userAction) {
+            case 'text':
+                var userText = event.message.text;
+                if (userText == 'lang') {
+                    await this.changeLang();
+                } else {
+                    await this.replyTextMsg(__('reply.hellomsg', event.message.text));
+                }
+                break;
+            case 'audio':
+                await this.replyTextMsg2(__('reply.sentAudio'),
+                    [
+                        {
+                            type: 'action',
+                            action: {
+                                type: 'datetimepicker',
+                                label: __('label.pickATime'),
+                                data: 'some data...',
+                                mode: 'datetime'
+                            }
+                        },
+                        {
+                            type: 'action',
+                            action: {
+                                type: 'message',
+                                label: __('label.noThanks'),
+                                text: __('label.noThanks')
+                            }
+                        }
+                    ]
+                );
+        }
+    }
+
+    async doProcessing() {
+        const event = this.event;
+
+        if (event.type == 'message') {
+            this.doAction(event.message.type);
+        } else if (event.type == 'postback') {
+            this.doAction('postback');
+        }
+    }
+}
+
 exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
 
     // decipher Webhook event sent by LineBot, that triggered by every user input
@@ -257,7 +376,11 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
         for (const event of body.events) {
             /* process webhook event now */
 
-            await originalProcessing(event, request, response);
+            var userObj = new DbUser(event);
+
+            await userObj.doProcessing();
+
+            // await originalProcessing(event, request, response);
 
             return response.status(200).send(request.method);
 
