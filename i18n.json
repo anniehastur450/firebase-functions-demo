@@ -3,5 +3,9 @@
     "areyouok.zh": "你OK嗎？",
 
     "hellomsg.en": "Hello %s.",
-    "hellomsg.zh": "你好 %s 。"
+    "hellomsg.zh": "你好 %s 。",
+
+    "message.reply.en": "HelloText %s, %s",
+    "message.reply.zh": "你輸入了%2$s，所以你好呀%1$s"
+
 }

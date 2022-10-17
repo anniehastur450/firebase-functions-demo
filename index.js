@@ -139,9 +139,20 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
                 latestPb_name = latestPb.data().name
             }
 
+            var userLang = (await currUser.get())?.data();
+            console.log('lang',userLang)
+            userLang = userLang.lang ?? 'en';
+            if (userText == 'change lang') {
+                userLang = userLang == 'en' ? 'zh' : 'en';
+                await currUser.update({ lang: userLang });
+            }
+
+            var __ = i18n.translate(userLang);
+
             // proceed LineBot differently according to user input (aka. userAction)
             if (userAction == "text") {
-                replyTextMsg(replyToken, `HelloText ${name}, ${userText}`)
+                // replyTextMsg(replyToken, `HelloText ${name}, ${userText}`)
+                replyTextMsg(replyToken, __('message.reply', name, userText))
             }
             else if (userAction == "audio") {
                 // upload audio msg
@@ -291,7 +302,7 @@ async function updateToDatebase(currUser, userId, userAction, userText, timestam
     pictureUrl = profile.pictureUrl;
 
     // add User Data
-    currUser.set({
+    currUser.update({
         "name": profileName,
         "profile pic": pictureUrl,
     })
