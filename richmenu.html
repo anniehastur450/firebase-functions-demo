@@ -1,0 +1,54 @@
+
+<canvas id="canvas"></canvas>
+
+<style>
+    canvas {
+        border: 1px solid black;
+    }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/randomcolor/0.6.1/randomColor.min.js" integrity="sha512-vPeZ7JCboHcfpqSx5ZD+/jpEhS4JpXxfz9orSvAPPj0EKUVShU2tgy7XkU+oujBJKnWmu4hU7r9MMQNWPfXsYw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+
+<script>
+    const texts = [
+        'Pick a time',
+        'text2',
+        'text3',
+        'text4',
+        'text5',
+        'Set Bot Language',
+    ]
+
+    canvas.width = 810;
+    canvas.height = 250;
+
+    /** @type {CanvasRenderingContext2D} */
+    var ctx = canvas.getContext('2d');
+
+    var rows = 2;
+    var cols = 3;
+
+    for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+            var color = randomColor();
+            console.log('color', color);
+            
+            var w = canvas.width / cols << 0;
+            var h = canvas.height / rows << 0;
+            var x = j * w;
+            var y = i * h;
+            var text = texts[i * cols + j];
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.font = '32px serif';
+            var textWidth = ctx.measureText(text).width;
+            ctx.fillText(text, x, y);
+        }
+    }
+</script>
