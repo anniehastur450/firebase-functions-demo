@@ -326,6 +326,22 @@ class DbUser {
                 }
                 break;
             case 'audio':
+                /* download audio */
+                // TODO: send reply and download/upload simultaneously
+                var duration = event.message.duration;
+                var msgId = event.message.id;
+                var filename = `audio_${this.userId}_${msgId}.m4a`;
+                var stream = await client.getMessageContent(msgId);
+
+                /* upload audio */
+                await uploadStreamFile(stream, filename,
+                    {
+                        duration: duration,
+                        datetime: timeParser(new Date(event.timestamp))
+                    }
+                );
+
+                /* reply message */
                 await this.replyTextMsg2(__('reply.sentAudio'),
                     [
                         {
@@ -567,6 +583,26 @@ async function getLatestAudioMsgData(request) {
     var filename = files[files.length - 1].metadata.name
     var url = getPubUrl(request, filename)
     return [filename, url]
+}
+
+async function uploadStreamFile(stream, filename, customMetadata) {
+    var file = bucket.file(filename);
+    var writeStream = file.createWriteStream({
+        contentType: 'auto',
+        metadata: {
+            metadata: customMetadata
+        }
+    });
+
+    // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
+    await new Promise((resolve, reject) => {
+        console.log(`uploading ${filename}...`);
+        stream.pipe(writeStream)
+            .on('error', reject)
+            .on('finish', resolve);
+    });
+
+    console.log(`done uploading ${filename}.`);
 }
 
 async function uploadAudioMsg(msgId, filename, duration) {
