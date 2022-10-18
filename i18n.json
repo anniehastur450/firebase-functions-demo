@@ -5,6 +5,12 @@
     "reply.sentAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
     "reply.sentAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
 
+    "reply.youHaveSet.en": "You have set %s",
+    "reply.youHaveSet.zh": "Chinese You have set %s",
+
+    "reply.okay.en": "Okay",
+    "reply.okay.zh": "Chinese Okay",
+
     "label.pickATime.en": "⏰ Pick a time",
     "label.pickATime.zh": "⏰ 選擇時間",
 

@@ -246,6 +246,28 @@ function unexpected(errorMessage) {
     throw new Error(errorMessage);
 }
 
+/*
+user doc data object structure (to store lang, states, etc)
+
+    {
+        lang: null, 'en' or 'zh'    // null mean unset
+        stateHolder: null or 'alarm-setter'
+        stateData: (holder specific data)
+        stateReplies: {             // store quick reply its corresponding tag
+            [key = text]: [value = tag]
+        }
+    }
+
+alarm-setter data
+
+    {
+        audio: null or filename
+        alarmTime: null or timestamp (utc)
+        state: 'waitTime', 'waitAudio'
+    }
+
+*/
+
 class DbUser {
     /**
      * @param {line.WebhookEvent} event
@@ -254,10 +276,6 @@ class DbUser {
         this.event = event;
         this.userId = event.source.userId ?? unexpected('null userId');
         this.replyToken = event.replyToken;
-        this.snapshotPromise = this.db.get();
-        // this.storedData = (async () => {  // the data in db if exists else empty obj
-        //     return (await this.snapshotPromise).data() ?? {};
-        // })();
     }
 
     // backgroundJobs = [];
@@ -266,13 +284,24 @@ class DbUser {
         return db.collection('users').doc(this.userId);
     }
 
-    async get(fieldPath) {
-        var snapshot = await this.snapshotPromise;
-        return snapshot.get(fieldPath);
+    getTranslator() {
+        if (!this.__) {
+            var userLang = this.storedData.lang ?? 'en';
+            this.__ = i18n.translate(userLang);
+        }
+        return this.__;
     }
 
-    async save(obj) {
-        return await this.db.set(obj, { merge: true });
+    // async get(fieldPath) {
+    //     var snapshot = await this.snapshotPromise;
+    //     return snapshot.get(fieldPath);
+    // }
+
+    // async save(obj) {
+    //     return await this.db.set(obj, { merge: true });
+    // }
+    async save() {
+        return await this.db.set(this.storedData);
     }
 
     replyTextMsg(textfrom) {
@@ -296,20 +325,16 @@ class DbUser {
         );
     }
 
-    async changeLang() {
+    async setLang(lang) {
         var __ = await this.getTranslator();
 
-        this.userLang = this.userLang == 'en' ? 'zh' : 'en';
-        await this.save({ lang: this.userLang });
-        __.lang = this.userLang;
+        this.storedData.lang = lang;
+        __.lang = lang;
         return await this.replyTextMsg(__('reply.chosenLang'));
     }
 
-    async getTranslator() {
-        if (this.__) return this.__;
-        this.userLang = await this.get('lang') ?? 'en';
-        this.__ = i18n.translate(this.userLang);
-        return this.__;
+    async changeLang() {
+        await this.setLang(this.storedData.lang != 'zh' ? 'zh' : 'en');
     }
 
     async doAction(userAction) {
@@ -322,7 +347,34 @@ class DbUser {
                 if (userText == 'lang') {
                     await this.changeLang();
                 } else {
-                    await this.replyTextMsg(__('reply.hellomsg', event.message.text));
+                    if (this.storedData.stateHolder != null
+                        && this.storedData.stateReplies.hasOwnProperty(userText)
+                    ) {
+                        var tag = this.storedData.stateReplies[userText];
+                        switch (this.storedData.stateHolder) {
+                            case 'alarm-setter':
+                                /* abort setting alarm */
+                                this.storedData.stateHolder = null;
+                                this.storedData.stateData = null;
+                                this.storedData.stateReplies = {};
+                                await this.replyTextMsg(__('reply.okay'));
+                                break;
+                            default:
+                                unexpected('unhandled state holder ' + this.storedData.stateHolder)
+                        }
+                    } else {
+                        await this.replyTextMsg(__('reply.hellomsg', event.message.text));
+                    }
+                }
+                break;
+            case 'postback':
+                if (this.storedData.stateHolder == 'alarm-setter') {
+                    /* clear setting alarm */
+                    this.storedData.stateHolder = null;
+                    this.storedData.stateData = null;
+                    this.storedData.stateReplies = {};
+                    await this.replyTextMsg(__('reply.youHaveSet', event.postback.params.datetime));
+
                 }
                 break;
             case 'audio':
@@ -342,6 +394,20 @@ class DbUser {
                 );
 
                 /* reply message */
+                // await this.getAlarmSetter().process();
+                if (this.storedData.stateHolder == null) {
+                    this.storedData.stateHolder = 'alarm-setter'
+                }
+                this.storedData.stateHolder = 'alarm-setter';
+                this.storedData.stateReplies = {
+                    [__('label.noThanks')]: 'label.noThanks'
+                };
+                this.storedData.stateData = {
+                    audio: filename,
+                    alarmTime: null,
+                    state: 'waitTime'
+                }
+                console.log(123)
                 await this.replyTextMsg2(__('reply.sentAudio'),
                     [
                         {
@@ -349,7 +415,7 @@ class DbUser {
                             action: {
                                 type: 'datetimepicker',
                                 label: __('label.pickATime'),
-                                data: 'some data...',
+                                data: 'alarm-setter',
                                 mode: 'datetime'
                             }
                         },
@@ -366,13 +432,20 @@ class DbUser {
         }
     }
 
-    async doProcessing() {
+    async init() {  // called by startProcessing()
+        /* the data in db if exists else empty obj */
+        this.storedData = (await this.db.get()).data() ?? {};
+    }
+
+    async startProcessing() {
+        await this.init();
+
         const event = this.event;
 
         if (event.type == 'message') {
-            this.doAction(event.message.type);
+            await this.doAction(event.message.type);
         } else if (event.type == 'postback') {
-            this.doAction('postback');
+            await this.doAction('postback');
         }
     }
 }
@@ -394,9 +467,13 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
             var userObj = new DbUser(event);
 
-            await userObj.doProcessing();
+            await userObj.startProcessing();
 
             // await originalProcessing(event, request, response);
+
+            console.log(userObj.storedData)
+
+            await userObj.save();
 
             return response.status(200).send(request.method);
 
