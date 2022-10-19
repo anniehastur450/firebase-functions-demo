@@ -350,8 +350,6 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
      */
     constructor(belongTo) {
         this.belongTo = belongTo;
-        this.replies = [];
-        this.quickReplies = [];
     }
 
     get stat() {
@@ -362,8 +360,12 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
         return this.belongTo.translator;
     }
 
-    get replyToken() {
-        return this.belongTo.replyToken;
+    get replies() {
+        return this.belongTo.replies;
+    }
+
+    get quickReplies() {
+        return this.belongTo.quickReplies;
     }
 
     ////////////////// CHATBOT LANGS /////////////////////
@@ -479,6 +481,8 @@ class DbUser {
         this.event = event;
         this.userId = event.source.userId ?? unexpected('null userId');
         this.replyToken = event.replyToken;
+        this.replies = [];
+        this.quickReplies = [];
     }
 
     // backgroundJobs = [];
@@ -501,16 +505,13 @@ class DbUser {
     }
 
     async replyMessage() {
-        const replies = this.chatbot.replies;
-        const quickReplies = this.chatbot.quickReplies;
-
-        var messages = replies.map(x => x.toLINEObject());
-        if (quickReplies.length != 0) {
+        var messages = this.replies.map(x => x.toLINEObject());
+        if (this.quickReplies.length != 0) {
             if (messages.length == 0) {
                 console.warn('no messages, cannot do quick reply');
             } else {
                 messages[messages.length - 1].quickReply = {
-                    items: quickReplies
+                    items: this.quickReplies
                 }
             }
         }
