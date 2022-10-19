@@ -250,27 +250,205 @@ function firstLetterCaptialize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-/*
-user doc data object structure (to store lang, states, etc)
+/* {} returns true, and [] returns false */
+function isObject(item) {
+    return (item && typeof item === 'object' && !Array.isArray(item));
+}
 
-    {
-        lang: null, 'en' or 'zh'    // null mean unset
-        stateHolder: null or 'alarm-setter'
-        stateData: (holder specific data)
-        stateReplies: {             // store quick reply its corresponding tag
-            [key = text]: [value = tag]
+function applyDefault(sourceData, defaultData) {
+    /* ref: https://stackoverflow.com/questions/27936772/how-to-deep-merge-instead-of-shallow-merge */
+
+    /*  assign default to source when:
+            source[key] not exist,
+            default[key] is object but source[key] is not
+
+        merge when:
+            source[key] and default[key] is object
+
+        other existing keys in source is ignored
+    */
+
+    for (const key in defaultData) {
+        if (key in sourceData) {
+            if (isObject(defaultData[key])) {
+                if (isObject(sourceData[key])) {
+                    applyDefault(sourceData[key], defaultData[key]);
+                } else {
+                    sourceData[key] = defaultData[key];
+                }
+            }
+        } else {
+            sourceData[key] = defaultData[key];
         }
     }
 
+    return sourceData;
+}
+
+/* user doc data object structure (to store lang, states, etc) */
+function defaultUserData() {
+    return {
+        lang: null,   // or 'en', 'zh', null mean unset
+        timezone: 8,  // only support utc+8 for now, user selected time will minus this
+        tags: {},     // store quick reply its corresponding tag
+        holder: null, // or 'alarm-setter', state holder
+        holderData: {},  // (holder specific data)
+    };
+}
+
+/*
 alarm-setter data
 
     {
         audio: null or filename
         alarmTime: null or timestamp (utc)
-        state: 'waitTime', 'waitAudio'
+        state: 'sentAudio', 'sentTime'
     }
 
 */
+
+class TextMessage {
+    constructor(text) {
+        this.text = text;
+    }
+
+    toLINEObject() {  // return Message object
+        return {
+            type: 'text',
+            text: this.text,
+        };
+    }
+
+}
+
+class ChatBot {  /* take the db save/store logic out of reply logic */
+    /**
+     * @param {DbUser} belongTo
+     */
+    constructor(belongTo) {
+        this.belongTo = belongTo;
+        this.replies = [];
+        this.quickReplies = [];
+    }
+
+    get stat() {
+        return this.belongTo.storedData;
+    }
+
+    get translator() {
+        return this.belongTo.translator;
+    }
+
+    get replyToken() {
+        return this.belongTo.replyToken;
+    }
+
+    ////////////////// CHATBOT LANGS /////////////////////
+
+    setLang(lang) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        stat.lang = lang;
+        __.lang = lang;
+        return this.replyText(__('reply.chosenLang'));
+    }
+
+    changeLang() {
+        return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
+    }
+
+    ////////////////// CHATBOT REPLIES /////////////////////
+
+    addQuickReply(...__tmp_quick_reply) {
+        this.quickReplies.push(...__tmp_quick_reply);
+    }
+
+    replyText(...texts) {
+        for (const text of texts) {
+            this.replies.push(new TextMessage(text));
+        }
+    }
+
+    ////////////////// CHATBOT SENDS /////////////////////
+
+    __tmp_clear_state() {
+        const stat = this.stat;
+
+        stat.holder = null;
+        stat.holderData = {};
+        stat.tags = {};
+    }
+
+    async sendText(text, tag) { /* user text, and corresponding tag */
+        const stat = this.stat;
+        const __ = this.translator;
+
+        if (text == 'lang') {
+            return this.changeLang();
+        }
+        if (tag != null) {
+            if (tag == 'label.noThanks') {
+                if (stat.holder == 'alarm-setter') {
+                    /* clear setting alarm */
+                    this.__tmp_clear_state();
+                }
+                return this.replyText(__('reply.okay'));
+            }
+            console.warn(`unhandled tag ${tag}, ${text}`);
+        }
+        return this.replyText(__('reply.hellomsg', text));
+    }
+
+    async sendAudio(filename) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        stat.holder = 'alarm-setter';
+        stat.tags = {
+            [__('label.noThanks')]: 'label.noThanks'
+        };
+        stat.holderData = {
+            audio: filename,
+            alarmTime: null,
+            state: 'sentAudio'
+        };
+        console.log(123);
+        this.replyText(__('reply.sentAudio'));
+        this.addQuickReply(
+            {
+                type: 'action',
+                action: {
+                    type: 'datetimepicker',
+                    label: __('label.pickATime'),
+                    data: 'alarm-setter',
+                    mode: 'datetime'
+                }
+            },
+            {
+                type: 'action',
+                action: {
+                    type: 'message',
+                    label: __('label.noThanks'),
+                    text: __('label.noThanks')
+                }
+            }
+        );
+    }
+
+    async sendPostback(data, params) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        if (stat.holder == 'alarm-setter') {
+            /* clear setting alarm */
+            this.__tmp_clear_state();
+            this.replyText(__('reply.youHaveSet', params.datetime));
+        }
+
+    }
+
+}
 
 class DbUser {
     /**
@@ -297,49 +475,29 @@ class DbUser {
         return this.#__;
     }
 
-    // async get(fieldPath) {
-    //     var snapshot = await this.snapshotPromise;
-    //     return snapshot.get(fieldPath);
-    // }
-
-    // async save(obj) {
-    //     return await this.db.set(obj, { merge: true });
-    // }
     async save() {
         return await this.db.set(this.storedData);
     }
 
-    replyTextMsg(textfrom) {
-        return client.replyMessage(this.replyToken,
-            {
-                type: "text",
-                text: textfrom
-            }
-        );
-    }
+    async replyMessage() {
+        const replies = this.chatbot.replies;
+        const quickReplies = this.chatbot.quickReplies;
 
-    replyTextMsg2(textfrom, quickReply) {
-        return client.replyMessage(this.replyToken,
-            {
-                type: "text",
-                text: textfrom,
-                quickReply: {
-                    'items': quickReply
+        var messages = replies.map(x => x.toLINEObject());
+        if (quickReplies.length != 0) {
+            if (messages.length == 0) {
+                console.warn('no messages, cannot do quick reply');
+            } else {
+                messages[messages.length - 1].quickReply = {
+                    items: quickReplies
                 }
             }
-        );
-    }
-
-    async setLang(lang) {
-        const __ = this.translator;
-
-        this.storedData.lang = lang;
-        __.lang = lang;
-        return await this.replyTextMsg(__('reply.chosenLang'));
-    }
-
-    async changeLang() {
-        await this.setLang(this.storedData.lang != 'zh' ? 'zh' : 'en');
+        }
+        console.log('doReply messages', messages);
+        if (messages.length == 0) {
+            console.warn('no messages, nothing will be replied');
+        }
+        return client.replyMessage(this.replyToken, messages);
     }
 
     async onText() {
@@ -347,28 +505,12 @@ class DbUser {
         const __ = this.translator;
 
         var userText = event.message.text;
-        if (userText == 'lang') {
-            await this.changeLang();
-        } else {
-            if (this.storedData.stateHolder != null
-                && this.storedData.stateReplies.hasOwnProperty(userText)
-            ) {
-                var tag = this.storedData.stateReplies[userText];
-                switch (this.storedData.stateHolder) {
-                    case 'alarm-setter':
-                        /* abort setting alarm */
-                        this.storedData.stateHolder = null;
-                        this.storedData.stateData = null;
-                        this.storedData.stateReplies = {};
-                        await this.replyTextMsg(__('reply.okay'));
-                        break;
-                    default:
-                        unexpected('unhandled state holder ' + this.storedData.stateHolder)
-                }
-            } else {
-                await this.replyTextMsg(__('reply.hellomsg', event.message.text));
-            }
+        var tag = null;
+        if (this.storedData.tags.hasOwnProperty(userText)) {
+            tag = this.storedData.tags[userText];
         }
+        await this.chatbot.sendText(userText, tag);
+        return this.replyMessage();
     }
 
     async onAudio() {
@@ -391,60 +533,24 @@ class DbUser {
         );
 
         /* reply message */
-        // await this.getAlarmSetter().process();
-        if (this.storedData.stateHolder == null) {
-            this.storedData.stateHolder = 'alarm-setter'
-        }
-        this.storedData.stateHolder = 'alarm-setter';
-        this.storedData.stateReplies = {
-            [__('label.noThanks')]: 'label.noThanks'
-        };
-        this.storedData.stateData = {
-            audio: filename,
-            alarmTime: null,
-            state: 'waitTime'
-        }
-        console.log(123)
-        await this.replyTextMsg2(__('reply.sentAudio'),
-            [
-                {
-                    type: 'action',
-                    action: {
-                        type: 'datetimepicker',
-                        label: __('label.pickATime'),
-                        data: 'alarm-setter',
-                        mode: 'datetime'
-                    }
-                },
-                {
-                    type: 'action',
-                    action: {
-                        type: 'message',
-                        label: __('label.noThanks'),
-                        text: __('label.noThanks')
-                    }
-                }
-            ]
-        );
+        await this.chatbot.sendAudio(filename);
+        return this.replyMessage();
     }
 
     async onPostback() {
         const event = this.event;
         const __ = this.translator;
 
-        if (this.storedData.stateHolder == 'alarm-setter') {
-            /* clear setting alarm */
-            this.storedData.stateHolder = null;
-            this.storedData.stateData = null;
-            this.storedData.stateReplies = {};
-            await this.replyTextMsg(__('reply.youHaveSet', event.postback.params.datetime));
-
-        }
+        await this.chatbot.sendPostback(event.postback.data, event.postback.params);
+        return this.replyMessage();
     }
 
     async init() {  // called by startProcessing()
         /* the data in db if exists else empty obj */
-        this.storedData = (await this.db.get()).data() ?? {};
+        var userData = (await this.db.get()).data() ?? {};
+        /** @type {ReturnType<typeof defaultUserData>} */
+        this.storedData = applyDefault(userData, defaultUserData());
+        this.chatbot = new ChatBot(this);
     }
 
     async startProcessing() {
@@ -487,13 +593,11 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
             /* process webhook event now */
 
             var userObj = new DbUser(event);
-
             await userObj.startProcessing();
 
             // await originalProcessing(event, request, response);
 
             console.log('save storedData', userObj.storedData);
-
             await userObj.save();
 
             return response.status(200).send(request.method);
