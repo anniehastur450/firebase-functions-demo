@@ -246,6 +246,10 @@ function unexpected(errorMessage) {
     throw new Error(errorMessage);
 }
 
+function firstLetterCaptialize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
 /*
 user doc data object structure (to store lang, states, etc)
 
@@ -284,12 +288,13 @@ class DbUser {
         return db.collection('users').doc(this.userId);
     }
 
-    getTranslator() {
-        if (!this.__) {
+    #__;
+    get translator() {
+        if (!this.#__) {
             var userLang = this.storedData.lang ?? 'en';
-            this.__ = i18n.translate(userLang);
+            this.#__ = i18n.translate(userLang);
         }
-        return this.__;
+        return this.#__;
     }
 
     // async get(fieldPath) {
@@ -326,7 +331,7 @@ class DbUser {
     }
 
     async setLang(lang) {
-        var __ = await this.getTranslator();
+        const __ = this.translator;
 
         this.storedData.lang = lang;
         __.lang = lang;
@@ -337,98 +342,103 @@ class DbUser {
         await this.setLang(this.storedData.lang != 'zh' ? 'zh' : 'en');
     }
 
-    async doAction(userAction) {
+    async onText() {
         const event = this.event;
-        var __ = await this.getTranslator();
+        const __ = this.translator;
 
-        switch (userAction) {
-            case 'text':
-                var userText = event.message.text;
-                if (userText == 'lang') {
-                    await this.changeLang();
-                } else {
-                    if (this.storedData.stateHolder != null
-                        && this.storedData.stateReplies.hasOwnProperty(userText)
-                    ) {
-                        var tag = this.storedData.stateReplies[userText];
-                        switch (this.storedData.stateHolder) {
-                            case 'alarm-setter':
-                                /* abort setting alarm */
-                                this.storedData.stateHolder = null;
-                                this.storedData.stateData = null;
-                                this.storedData.stateReplies = {};
-                                await this.replyTextMsg(__('reply.okay'));
-                                break;
-                            default:
-                                unexpected('unhandled state holder ' + this.storedData.stateHolder)
-                        }
-                    } else {
-                        await this.replyTextMsg(__('reply.hellomsg', event.message.text));
+        var userText = event.message.text;
+        if (userText == 'lang') {
+            await this.changeLang();
+        } else {
+            if (this.storedData.stateHolder != null
+                && this.storedData.stateReplies.hasOwnProperty(userText)
+            ) {
+                var tag = this.storedData.stateReplies[userText];
+                switch (this.storedData.stateHolder) {
+                    case 'alarm-setter':
+                        /* abort setting alarm */
+                        this.storedData.stateHolder = null;
+                        this.storedData.stateData = null;
+                        this.storedData.stateReplies = {};
+                        await this.replyTextMsg(__('reply.okay'));
+                        break;
+                    default:
+                        unexpected('unhandled state holder ' + this.storedData.stateHolder)
+                }
+            } else {
+                await this.replyTextMsg(__('reply.hellomsg', event.message.text));
+            }
+        }
+    }
+
+    async onAudio() {
+        const event = this.event;
+        const __ = this.translator;
+
+        /* download audio */
+        // TODO: send reply and download/upload simultaneously
+        var duration = event.message.duration;
+        var msgId = event.message.id;
+        var filename = `audio_${this.userId}_${msgId}.m4a`;
+        var stream = await client.getMessageContent(msgId);
+
+        /* upload audio */
+        await uploadStreamFile(stream, filename,
+            {
+                duration: duration,
+                datetime: timeParser(new Date(event.timestamp))
+            }
+        );
+
+        /* reply message */
+        // await this.getAlarmSetter().process();
+        if (this.storedData.stateHolder == null) {
+            this.storedData.stateHolder = 'alarm-setter'
+        }
+        this.storedData.stateHolder = 'alarm-setter';
+        this.storedData.stateReplies = {
+            [__('label.noThanks')]: 'label.noThanks'
+        };
+        this.storedData.stateData = {
+            audio: filename,
+            alarmTime: null,
+            state: 'waitTime'
+        }
+        console.log(123)
+        await this.replyTextMsg2(__('reply.sentAudio'),
+            [
+                {
+                    type: 'action',
+                    action: {
+                        type: 'datetimepicker',
+                        label: __('label.pickATime'),
+                        data: 'alarm-setter',
+                        mode: 'datetime'
+                    }
+                },
+                {
+                    type: 'action',
+                    action: {
+                        type: 'message',
+                        label: __('label.noThanks'),
+                        text: __('label.noThanks')
                     }
                 }
-                break;
-            case 'postback':
-                if (this.storedData.stateHolder == 'alarm-setter') {
-                    /* clear setting alarm */
-                    this.storedData.stateHolder = null;
-                    this.storedData.stateData = null;
-                    this.storedData.stateReplies = {};
-                    await this.replyTextMsg(__('reply.youHaveSet', event.postback.params.datetime));
+            ]
+        );
+    }
 
-                }
-                break;
-            case 'audio':
-                /* download audio */
-                // TODO: send reply and download/upload simultaneously
-                var duration = event.message.duration;
-                var msgId = event.message.id;
-                var filename = `audio_${this.userId}_${msgId}.m4a`;
-                var stream = await client.getMessageContent(msgId);
+    async onPostback() {
+        const event = this.event;
+        const __ = this.translator;
 
-                /* upload audio */
-                await uploadStreamFile(stream, filename,
-                    {
-                        duration: duration,
-                        datetime: timeParser(new Date(event.timestamp))
-                    }
-                );
+        if (this.storedData.stateHolder == 'alarm-setter') {
+            /* clear setting alarm */
+            this.storedData.stateHolder = null;
+            this.storedData.stateData = null;
+            this.storedData.stateReplies = {};
+            await this.replyTextMsg(__('reply.youHaveSet', event.postback.params.datetime));
 
-                /* reply message */
-                // await this.getAlarmSetter().process();
-                if (this.storedData.stateHolder == null) {
-                    this.storedData.stateHolder = 'alarm-setter'
-                }
-                this.storedData.stateHolder = 'alarm-setter';
-                this.storedData.stateReplies = {
-                    [__('label.noThanks')]: 'label.noThanks'
-                };
-                this.storedData.stateData = {
-                    audio: filename,
-                    alarmTime: null,
-                    state: 'waitTime'
-                }
-                console.log(123)
-                await this.replyTextMsg2(__('reply.sentAudio'),
-                    [
-                        {
-                            type: 'action',
-                            action: {
-                                type: 'datetimepicker',
-                                label: __('label.pickATime'),
-                                data: 'alarm-setter',
-                                mode: 'datetime'
-                            }
-                        },
-                        {
-                            type: 'action',
-                            action: {
-                                type: 'message',
-                                label: __('label.noThanks'),
-                                text: __('label.noThanks')
-                            }
-                        }
-                    ]
-                );
         }
     }
 
@@ -442,10 +452,21 @@ class DbUser {
 
         const event = this.event;
 
+        var userAction;
         if (event.type == 'message') {
-            await this.doAction(event.message.type);
-        } else if (event.type == 'postback') {
-            await this.doAction('postback');
+            userAction = event.message.type;
+        } else if (['postback'].includes(event.type)) {
+            userAction = event.type;
+        } else {
+            return console.warn(`unhandled event type ${event.type}`)
+        }
+
+        /* onText, onAudio, onPostback */
+        var key = 'on' + firstLetterCaptialize(userAction);
+        if (key in this) {
+            return this[key]();
+        } else {
+            return console.warn(`haven't implement ${key}() method yet`)
         }
     }
 }
@@ -471,7 +492,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
             // await originalProcessing(event, request, response);
 
-            console.log(userObj.storedData)
+            console.log('save storedData', userObj.storedData);
 
             await userObj.save();
 
