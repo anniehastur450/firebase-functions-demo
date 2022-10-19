@@ -307,6 +307,29 @@ alarm-setter data
 
 */
 
+/* Quick replies */
+
+class DatetimePicker {
+    constructor(data, label, options = {}) {
+        this.data = data;    // line will reject empty string
+        this.label = label
+        this.mode = 'datetime';
+        this.options = options;
+    }
+
+    toLINEObject() {  // return Action object
+        return {
+            type: 'datetimepicker',
+            data: this.data,
+            label: this.label,
+            mode: this.mode,
+            ...this.options
+        };
+    }
+
+}
+
+/* CHATBOT replies */
 class TextMessage {
     constructor(text) {
         this.text = text;
@@ -360,8 +383,24 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
 
     ////////////////// CHATBOT REPLIES /////////////////////
 
-    addQuickReply(...__tmp_quick_reply) {
-        this.quickReplies.push(...__tmp_quick_reply);
+    addQuickReply(...actions) {
+        for (let action of actions) {
+            if (action.toLINEObject) {
+                action = action.toLINEObject();
+            }
+            this.quickReplies.push({
+                type: 'action',
+                action: action
+            })
+        }
+    }
+
+    addQuickReplyText(label, text = label) {
+        this.addQuickReply({
+            type: 'message',
+            label: label,
+            text: text
+        });
     }
 
     replyText(...texts) {
@@ -413,27 +452,9 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
             alarmTime: null,
             state: 'sentAudio'
         };
-        console.log(123);
         this.replyText(__('reply.sentAudio'));
-        this.addQuickReply(
-            {
-                type: 'action',
-                action: {
-                    type: 'datetimepicker',
-                    label: __('label.pickATime'),
-                    data: 'alarm-setter',
-                    mode: 'datetime'
-                }
-            },
-            {
-                type: 'action',
-                action: {
-                    type: 'message',
-                    label: __('label.noThanks'),
-                    text: __('label.noThanks')
-                }
-            }
-        );
+        this.addQuickReply(new DatetimePicker('alarm-setter', __('label.pickATime')));
+        this.addQuickReplyText(__('label.noThanks'));
     }
 
     async sendPostback(data, params) {
@@ -493,7 +514,7 @@ class DbUser {
                 }
             }
         }
-        console.log('doReply messages', messages);
+        console.log('reply messages', messages);
         if (messages.length == 0) {
             console.warn('no messages, nothing will be replied');
         }
@@ -609,7 +630,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
             /* it is line sdk error */
             console.error('line HTTPError', err.originalError.response.data);
         } else {
-        console.error(err);
+            console.error(err);
         }
         return response.sendStatus(400);  /* terminate processing */
     }
