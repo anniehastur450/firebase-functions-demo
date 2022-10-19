@@ -15,3 +15,7 @@ exports.translate = function(lang) {
     funcObj.lang = lang;
     return funcObj;
 }
+
+exports.get = function(key) {
+    return i18nContent[key];
+}

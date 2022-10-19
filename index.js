@@ -344,12 +344,48 @@ class TextMessage {
 
 }
 
-class ChatBot {  /* take the db save/store logic out of reply logic */
+////////////////// CHATBOT /////////////////////
+
+/*
+const chatbots is generated at runtime, which will look like this:
+{
+    'null': ChatBot,
+    'alarm-setter': AlarmSetter,
+    'lang-selector': LangSelector,
+}
+
+*/
+const chatbots = {};
+function register(name, theClass) {
+    if (chatbots.hasOwnProperty(name)) {
+        console.error(`name ${name} already exist`)
+        throwRegisterFailure(theClass);
+    }
+    chatbots[name] = theClass;
+    return name;
+}
+function throwRegisterFailure(theClass) {
+    unexpected(`${theClass.name}.NAME should be declared as follows\n`
+        + `    static NAME = ${register.name}('{{THE_BOT_NAME}}', this);`);
+}
+
+const langs = [
+    'en',
+    'zh',
+    'jp',
+]
+
+class BaseDbUserChatBot {
     /**
      * @param {DbUser} belongTo
      */
     constructor(belongTo) {
         this.belongTo = belongTo;
+        if (!this.constructor.hasOwnProperty('NAME')) {
+            throwRegisterFailure(this.constructor);
+        }
+        /** @type {string} */
+        this.name = this.constructor.NAME;
     }
 
     get stat() {
@@ -368,19 +404,21 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
         return this.belongTo.quickReplies;
     }
 
-    ////////////////// CHATBOT LANGS /////////////////////
+    ////////////////// CHATBOT TRANSFORMER /////////////////////
 
-    setLang(lang) {
-        const stat = this.stat;
-        const __ = this.translator;
-
-        stat.lang = lang;
-        __.lang = lang;
-        return this.replyText(__('reply.chosenLang'));
+    abort() {  // go to fallback
+        this.onAbort();
+        return this.transformTo(null);
     }
 
-    changeLang() {
-        return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
+    transformTo(name) {
+        this.belongTo.__err_transform_count++;
+        if (this.belongTo.__err_transform_count > 100) {
+            console.error('transform too many times!')
+            console.error('is your program stuck?')
+        }
+        this.stat.holder = name;
+        return this.belongTo.getChatBot(name);
     }
 
     ////////////////// CHATBOT REPLIES /////////////////////
@@ -411,7 +449,7 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
         }
     }
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// EMPTY CHATBOT SENDS /////////////////////
 
     __tmp_clear_state() {
         const stat = this.stat;
@@ -421,27 +459,96 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
         stat.tags = {};
     }
 
+    onAbort() { unexpected('not implemented') }  // subclass except ChatBot must implement it
+
+    async sendText(text, tag) {
+        return this.abort().sendText(...arguments);
+    }
+
+    async sendAudio(filename) {
+        return this.abort().sendAudio(...arguments);
+    }
+
+    async sendPostback(data, params) {
+        return this.abort().sendPostback(...arguments);
+    }
+
+}
+
+class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out of reply logic */
+
+    static NAME = register(null, this);
+
+    ////////////////// CHATBOT SENDS /////////////////////
+
     async sendText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
         const __ = this.translator;
 
         if (text == 'lang') {
-            return this.changeLang();
+            return this.transformTo('lang-selector').changeLang();
         }
         if (tag != null) {
-            if (tag == 'label.noThanks') {
-                if (stat.holder == 'alarm-setter') {
-                    /* clear setting alarm */
-                    this.__tmp_clear_state();
-                }
-                return this.replyText(__('reply.okay'));
-            }
             console.warn(`unhandled tag ${tag}, ${text}`);
         }
         return this.replyText(__('reply.hellomsg', text));
     }
 
     async sendAudio(filename) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        return this.transformTo('alarm-setter').setAudio(filename);
+    }
+
+    async sendPostback(data, params) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        /* empty for now */
+    }
+
+}
+
+class AlarmSetter extends BaseDbUserChatBot {
+
+    static NAME = register('alarm-setter', this);
+
+    ////////////////// CHATBOT SENDS /////////////////////
+
+    onAbort() {
+        __tmp_clear_state();
+    }
+
+    async sendText(text, tag) { /* user text, and corresponding tag */
+        const stat = this.stat;
+        const __ = this.translator;
+
+        if (tag == 'label.noThanks') {
+            /* clear setting alarm */
+            this.__tmp_clear_state();
+            return this.replyText(__('reply.okay'));
+        }
+
+        return super.sendText(...arguments);
+    }
+
+    async sendPostback(data, params) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        if (params.datetime) {
+            /* clear setting alarm */
+            this.__tmp_clear_state();
+            return this.replyText(__('reply.youHaveSet', params.datetime));
+        }
+
+        return super.sendText(...arguments);
+    }
+
+    /* --------------- CHATBOT SELF OWNED ------------------ */
+
+    setAudio(filename) {
         const stat = this.stat;
         const __ = this.translator;
 
@@ -459,16 +566,48 @@ class ChatBot {  /* take the db save/store logic out of reply logic */
         this.addQuickReplyText(__('label.noThanks'));
     }
 
-    async sendPostback(data, params) {
+}
+
+class LangSelector extends BaseDbUserChatBot {
+
+    static NAME = register('lang-selector', this);
+
+    ////////////////// CHATBOT SENDS /////////////////////
+
+    onAbort() {
+        this.__tmp_clear_state();
+    }
+
+    async sendText(text, tag) {
+        if (langs.includes(tag)) {
+            return this.setLang(tag);
+        }
+        return super.sendText(...arguments);
+    }
+
+    /* --------------- CHATBOT SELF OWNED ------------------ */
+
+    setLang(lang) {
         const stat = this.stat;
         const __ = this.translator;
 
-        if (stat.holder == 'alarm-setter') {
-            /* clear setting alarm */
-            this.__tmp_clear_state();
-            this.replyText(__('reply.youHaveSet', params.datetime));
-        }
+        stat.lang = lang;
+        __.lang = lang;
+        return this.replyText(__('reply.chosenLang'));
+    }
 
+    changeLang() {
+        // return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
+
+        const stat = this.stat;
+        const __ = this.translator;
+
+        for (const lang of langs) {
+            var displayText = i18n.get(`lang.${lang}`);
+            this.stat.tags[displayText] = lang;
+            this.addQuickReplyText(displayText);
+        }
+        this.replyText(__('reply.chooseLang'));
     }
 
 }
@@ -483,6 +622,7 @@ class DbUser {
         this.replyToken = event.replyToken;
         this.replies = [];
         this.quickReplies = [];
+        this.__err_transform_count = 0;
     }
 
     // backgroundJobs = [];
@@ -498,6 +638,14 @@ class DbUser {
             this.#__ = i18n.translate(userLang);
         }
         return this.#__;
+    }
+
+    #cachedBots = {};
+    getChatBot(name) {
+        if (!this.#cachedBots[name]) {
+            this.#cachedBots[name] = new chatbots[name](this);
+        }
+        return this.#cachedBots[name];
     }
 
     async save() {
@@ -524,7 +672,6 @@ class DbUser {
 
     async onText() {
         const event = this.event;
-        const __ = this.translator;
 
         var userText = event.message.text;
         var tag = null;
@@ -537,7 +684,6 @@ class DbUser {
 
     async onAudio() {
         const event = this.event;
-        const __ = this.translator;
 
         /* download audio */
         // TODO: send reply and download/upload simultaneously
@@ -561,7 +707,6 @@ class DbUser {
 
     async onPostback() {
         const event = this.event;
-        const __ = this.translator;
 
         await this.chatbot.sendPostback(event.postback.data, event.postback.params);
         return this.replyMessage();
@@ -572,7 +717,12 @@ class DbUser {
         var userData = (await this.db.get()).data() ?? {};
         /** @type {ReturnType<typeof defaultUserData>} */
         this.storedData = applyDefault(userData, defaultUserData());
-        this.chatbot = new ChatBot(this);
+
+        if (this.storedData.holder) {
+            this.chatbot = this.getChatBot(this.storedData.holder);
+        } else {
+            this.chatbot = this.getChatBot(null);
+        }
     }
 
     async startProcessing() {
