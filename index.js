@@ -575,6 +575,13 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         const __ = this.translator;
 
         /* empty for now */
+        if (data.startsWith('flex,edit=')) {
+            if (!params?.datetime) {
+                console.warn('unexpected no datetime');
+            }else {
+                return this.replyText(`__tmp_you have done some edit... ${params.datetime}`);
+            }
+        }
     }
 
 }
@@ -598,8 +605,7 @@ class AlarmSetter extends BaseDbUserChatBot {
                 console.warn('unexpected no datetime');
             } else {
                 stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
-                await this.#save();
-                this.#replyFlexAlarm();
+                this.#replyFlexAlarm(await this.#save());
                 this.replyText(__('reply.alarmScheduled', params.datetime));
             }
             return this.abort();
@@ -618,18 +624,21 @@ class AlarmSetter extends BaseDbUserChatBot {
         const __ = this.translator;
 
         const { audio, alarmTime } = stat.holderData;
-        await this.db.doc(`alarm_${stat.alarmId++}`).set({
+        let alarmId = `alarm_${stat.alarmId++}`;
+        await this.db.doc(alarmId).set({
             audio,
             alarmTime,
             __friendly_time: this.belongTo.toDatetimeString(alarmTime)
         });
+
+        return alarmId;
     }
 
-    #replyFlexAlarm() {
+    #replyFlexAlarm(alarmId) {
         const stat = this.stat;
         const __ = this.translator;
 
-        let flex = flexs.alarmScheduled(__, stat.holderData.alarmTime, stat.timezone);
+        let flex = flexs.alarmScheduled(__, stat.holderData.alarmTime, stat.timezone, alarmId);
         this.reply(new FlexMessage(flex));
     }
 

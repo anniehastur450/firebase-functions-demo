@@ -1,7 +1,7 @@
 
 const printf = require('printf');
 
-function alarmScheduledJSON(emoji, lbs, time, date) {
+function alarmScheduledJSON(emoji, lbs, time, suf, date, alarmId) {
     let i = 0;
     return {
         "type": "bubble",
@@ -48,10 +48,25 @@ function alarmScheduledJSON(emoji, lbs, time, date) {
                             "contents": [
                                 {
                                     "type": "text",
-                                    "text": time,  // 09:28 PM
                                     "size": "xxl",
                                     "weight": "bold",
-                                    "align": "end"
+                                    "align": "end",
+                                    "contents": [
+                                        {
+                                            "type": "span",
+                                            "text": time  // 09:28
+                                        },
+                                        {
+                                            "type": "span",
+                                            "text": " ",
+                                            "size": "sm"
+                                        },
+                                        {
+                                            "type": "span",
+                                            "text": suf,  // PM
+                                            "size": "xl"
+                                        }
+                                    ]
                                 },
                                 {
                                     "type": "text",
@@ -78,9 +93,10 @@ function alarmScheduledJSON(emoji, lbs, time, date) {
                 {
                     "type": "button",
                     "action": {
-                        "type": "postback",
+                        "type": "datetimepicker",
+                        "mode": "datetime",
                         "label": lbs[i++], // EDIT
-                        "data": "hello"
+                        "data": `flex,edit=${alarmId}`
                     },
                     "height": "sm"
                 },
@@ -88,8 +104,9 @@ function alarmScheduledJSON(emoji, lbs, time, date) {
                     "type": "button",
                     "action": {
                         "type": "postback",
+                        "displayText": lbs[i],
                         "label": lbs[i++], // VIEW ALARMS
-                        "data": "hello"
+                        "data": "flex,viewAlarms"
                     },
                     "height": "sm",
                     "flex": 0
@@ -116,7 +133,7 @@ function timeString(__, d) {
     let min = d.getUTCMinutes();
     let suf = hr >= 12 ? 'PM' : 'AM';
     if (hr > 12) hr -= 12;  // 12 is unchanged
-    return printf('%02d:%02d %s', hr, min, suf);
+    return [printf('%02d:%02d', hr, min), suf];
 }
 
 function dateString(__, d) {
@@ -129,7 +146,7 @@ function dateString(__, d) {
     return printf('%s %s, %s', months[d.getUTCMonth()], d.getUTCDate(), d.getUTCFullYear());
 }
 
-exports.alarmScheduled = function (__, timestamp, timezone) {
+exports.alarmScheduled = function (__, timestamp, timezone, alarmId) {
     console.log('alarmScheduled', timestamp, timezone)
     timestamp += timezone * 3600 * 1000;
     let d = new Date(timestamp);
@@ -142,7 +159,7 @@ exports.alarmScheduled = function (__, timestamp, timezone) {
         lbs.push(__(`flex.alarm.lb_${i}`));
     }
 
-    let flex = alarmScheduledJSON(emoji, lbs, timeString(__, d), dateString(__, d));
+    let flex = alarmScheduledJSON(emoji, lbs, ...timeString(__, d), dateString(__, d), alarmId);
     console.log('flex', JSON.stringify(flex));
     return flex;
 }
