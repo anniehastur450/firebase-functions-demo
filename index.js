@@ -331,6 +331,26 @@ class DatetimePicker {
 
 }
 
+class PostbackAction {
+    constructor(data, label, options = {}) {
+        this.data = data;    // line will reject empty string
+        this.label = label
+        this.displayText = label;
+        this.options = options;
+    }
+
+    toLINEObject() {  // return Action object
+        return {
+            type: 'postback',
+            data: this.data,
+            label: this.label,
+            displayText: this.displayText,
+            ...this.options
+        };
+    }
+
+}
+
 /* CHATBOT replies */
 class TextMessage {
     constructor(text) {
@@ -489,7 +509,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         if (text == 'lang') {
             return this.belongTo.setHolder('lang-selector').changeLang();
         }
-        if (tag != null) {
+        if (!tag) {
             console.warn(`unhandled tag ${tag}, ${text}`);
         }
         return this.replyText(__('reply.hellomsg', text));
@@ -517,28 +537,19 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     ////////////////// CHATBOT SENDS /////////////////////
 
-    async reactText(text, tag) { /* user text, and corresponding tag */
-        const stat = this.stat;
-        const __ = this.translator;
-
-        if (tag == 'label.noThanks') {
-            /* clear setting alarm */
-            // this.__tmp_clear_state();
-            this.replyText(__('reply.okay'));
-            return this.abort();
-        }
-
-        return super.reactText(...arguments);
-    }
-
     async reactPostback(data, params) {
         const stat = this.stat;
         const __ = this.translator;
 
-        if (params.datetime) {
-            /* clear setting alarm */
-            // this.__tmp_clear_state();
-            this.replyText(__('reply.youHaveSet', params.datetime));
+        if (data == 'alarm-setter') {
+            if (!params?.datetime) {
+                console.warn('unexpected no datetime');
+            } else {
+                this.replyText(__('reply.youHaveSet', params.datetime));
+            }
+            return this.abort();
+        } else if (data == 'alarm-setter,noThanks') {
+            this.replyText(__('reply.okay'));
             return this.abort();
         }
 
@@ -551,17 +562,16 @@ class AlarmSetter extends BaseDbUserChatBot {
         const stat = this.stat;
         const __ = this.translator;
 
-        stat.tags = {
-            [__('label.noThanks')]: 'label.noThanks'
-        };
         stat.holderData = {
             audio: filename,
             alarmTime: null,
             state: 'sentAudio'
         };
         this.replyText(__('reply.sentAudio'));
-        this.addQuickReply(new DatetimePicker('alarm-setter', __('label.pickATime')));
-        this.addQuickReplyText(__('label.noThanks'));
+        this.addQuickReply(
+            new DatetimePicker('alarm-setter', __('label.pickATime')),
+            new PostbackAction('alarm-setter,noThanks', __('label.noThanks'))
+        );
     }
 
 }
@@ -572,22 +582,33 @@ class LangSelector extends BaseDbUserChatBot {
 
     ////////////////// CHATBOT SENDS /////////////////////
 
-    async reactText(text, tag) {
-        if (langs.includes(tag)) {
-            return this.setLang(tag);
+    async reactPostback(data, params) {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        var prefix = 'lang-selector,';
+        if (data.startsWith(prefix)) {
+            const lang = data.slice(prefix.length);
+            if (langs.includes(lang)) {
+                this.#setLang(lang);
+            } else {
+                console.warn(`unknown lang ${lang}`);
+            }
+            return this.abort();
         }
-        return super.reactText(...arguments);
+
+        return super.reactPostback(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
-    setLang(lang) {
+    #setLang(lang) {
         const stat = this.stat;
         const __ = this.translator;
 
         stat.lang = lang;
         __.lang = lang;
-        return this.replyText(__('reply.chosenLang'));
+        this.replyText(__('reply.chosenLang'));
     }
 
     changeLang() {
@@ -596,15 +617,23 @@ class LangSelector extends BaseDbUserChatBot {
         const stat = this.stat;
         const __ = this.translator;
 
+        this.replyText(__('reply.chooseLang'));
         for (const lang of langs) {
             var displayText = i18n.get(`lang.${lang}`);
-            this.stat.tags[displayText] = lang;
-            this.addQuickReplyText(displayText);
+            this.addQuickReply(
+                new PostbackAction(`lang-selector,${lang}`, displayText)
+            );
         }
-        this.replyText(__('reply.chooseLang'));
     }
 
 }
+
+// @typedef description see https://jsdoc.app/tags-typedef.html
+// or https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#typedef-callback-and-param
+/**
+ * Possible chatbots.
+ * @typedef {(ChatBot|AlarmSetter|LangSelector)} ChatBotLike
+ */
 
 class DbUser {
     /**
@@ -634,6 +663,9 @@ class DbUser {
         return this.#__;
     }
 
+    /**
+     * @returns {ChatBotLike}
+     */
     get chatbot() {
         /* return chatbot by holder, null is deafult chatbot */
         return this.#getChatBot(this.storedData.holder ?? null);
