@@ -1,0 +1,148 @@
+
+const printf = require('printf');
+
+function alarmScheduledJSON(emoji, lbs, time, date) {
+    let i = 0;
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": `${emoji} ${lbs[i++]}`,  // 🕒 ALARM
+                                    "size": "xl",
+                                    "weight": "bold",
+                                    "color": "#1DB446",
+                                    "align": "end"
+                                },
+                                {
+                                    "type": "text",
+                                    "text": lbs[i++], // AUDIO MESSAGE
+                                    "size": "xxs",
+                                    "color": "#aaaaaa",
+                                    "align": "end"
+                                }
+                            ],
+                            "spacing": "none",
+                            "justifyContent": "space-evenly",
+                            "flex": 0
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": []
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": time,  // 09:28 PM
+                                    "size": "xxl",
+                                    "weight": "bold",
+                                    "align": "end"
+                                },
+                                {
+                                    "type": "text",
+                                    "text": date,  // JUN 7, 2022
+                                    "size": "xs",
+                                    "color": "#aaaaaa",
+                                    "align": "end"
+                                }
+                            ],
+                            "flex": 0
+                        }
+                    ],
+                    "spacing": "none",
+                    "margin": "none"
+                }
+            ],
+            "margin": "none",
+            "paddingBottom": "none"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "horizontal",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "postback",
+                        "label": lbs[i++], // EDIT
+                        "data": "hello"
+                    },
+                    "height": "sm"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "postback",
+                        "label": lbs[i++], // VIEW ALARMS
+                        "data": "hello"
+                    },
+                    "height": "sm",
+                    "flex": 0
+                }
+            ]
+        }
+    };
+}
+
+function emojiClock(__, hr) {  // hr can be decimals
+    // n-th emoji see https://stackoverflow.com/questions/24531751/how-can-i-split-a-string-containing-emoji-into-an-array
+    const emojis = [...__.get('emoji.clock')];
+    /* [0] is 0100, [1] is 0130, [2] is 0200 and so on */
+    return emojis[(((hr + 12 - 1) * 2 + .5) << 0) % 24];
+}
+
+function timeString(__, d) {
+    // TODO: translate time
+    /*  by wiki, 24-hr 00:00 -> 12-hr 12:00 AM, (but I like 00:00 AM)
+                       12:00 -> 12-hr 12:00 PM, (this is ok)
+
+    */
+    let hr = d.getUTCHours();
+    let min = d.getUTCMinutes();
+    let suf = hr >= 12 ? 'PM' : 'AM';
+    if (hr > 12) hr -= 12;  // 12 is unchanged
+    return printf('%02d:%02d %s', hr, min, suf);
+}
+
+function dateString(__, d) {
+    // TODO: translate date
+    /* [...Array(12).keys()].map(i => new Date(0, i).toLocaleDateString('jp',
+        {month: 'short'}).toUpperCase())
+
+    */
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return printf('%s %s, %s', months[d.getUTCMonth()], d.getUTCDate(), d.getUTCFullYear());
+}
+
+exports.alarmScheduled = function (__, timestamp, timezone) {
+    console.log('alarmScheduled', timestamp, timezone)
+    timestamp += timezone * 3600 * 1000;
+    let d = new Date(timestamp);
+
+    let hr = d.getUTCHours() + d.getUTCMinutes() / 60;
+    let emoji = emojiClock(__, hr);
+
+    let lbs = [];
+    for (let i = 1; i <= 4; i++) {
+        lbs.push(__(`flex.alarm.lb_${i}`));
+    }
+
+    let flex = alarmScheduledJSON(emoji, lbs, timeString(__, d), dateString(__, d));
+    console.log('flex', JSON.stringify(flex));
+    return flex;
+}

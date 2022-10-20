@@ -3,6 +3,10 @@ const printf = require('printf');
 
 var i18nContent = require('./i18n.json');
 
+exports.get = function(key) {
+    return i18nContent[key];
+}
+
 exports.translate = function(lang) {
     var funcObj = function(tag, ...arg) {
         var key = `${tag}.${funcObj.lang}`;
@@ -13,9 +17,6 @@ exports.translate = function(lang) {
         return key;
     }
     funcObj.lang = lang;
+    funcObj.get = exports.get;
     return funcObj;
-}
-
-exports.get = function(key) {
-    return i18nContent[key];
 }

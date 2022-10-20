@@ -11,6 +11,10 @@
     "reply.youHaveSet.zh": "你已經設定了 %s",
     "reply.youHaveSet.jp": "%s を設定しました",
 
+    "reply.alarmScheduled.en": "An alarm has been set.",
+    "reply.alarmScheduled.zh": "已設定鬧鐘。",
+    "reply.alarmScheduled.jp": "アラーム タスクがスケジュールされています。",
+
     "reply.okay.en": "Okay",
     "reply.okay.zh": "好的",
     "reply.okay.jp": "わかった",
@@ -35,9 +39,28 @@
     "reply.hellomsg.zh": "你好 %s 。",
     "reply.hellomsg.jp": "こんにちは %s。",
 
+    "flex.alarm.lb_1.en": "ALARM",
+    "flex.alarm.lb_2.en": "AUDIO MESSAGE",
+    "flex.alarm.lb_3.en": "EDIT",
+    "flex.alarm.lb_4.en": "VIEW ALARMS",
+
+    "flex.alarm.lb_1.zh": "鬧鐘",
+    "flex.alarm.lb_2.zh": "語音消息",
+    "flex.alarm.lb_3.zh": "編輯",
+    "flex.alarm.lb_4.zh": "查看所有鬧鐘",
+
+    "flex.alarm.lb_1.jp": "アラーム",
+    "flex.alarm.lb_2.jp": "音声メッセージ",
+    "flex.alarm.lb_3.jp": "編集する",
+    "flex.alarm.lb_4.jp": "アラームを表示",
+
+    "keyword.lang.en": "",
+
     "lang.en": "English",
     "lang.zh": "中文",
     "lang.jp": "日本語",
+
+    "emoji.clock": "🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🕛🕧",
 
     "message.reply.en": "HelloText %s, %s",
     "message.reply.zh": "你輸入了%2$s，所以你好呀%1$s"

@@ -34,6 +34,9 @@ const client = new line.Client(functions.config().secrets.lineClientConfig);
 ////////////////// I18N /////////////////////
 const i18n = require('./i18n');
 
+////////////////// FLEX MESSAGE /////////////////////
+const flexs = require('./flex-message');
+
 var msgId; // used it as naming standard for audio records, only message type has it, not postback type
 var userAction; // event.type for postback type, evenet.message.type for message type
 
@@ -391,6 +394,22 @@ class TextMessage {
 
 }
 
+class FlexMessage {
+    constructor(flex, altText = 'this is a flex message') {
+        this.flex = flex;
+        this.altText = altText;
+    }
+
+    toLINEObject() {  // return Message object
+        return {
+            type: 'flex',
+            altText: this.altText,
+            contents: this.flex,
+        };
+    }
+
+}
+
 ////////////////// CHATBOT /////////////////////
 
 function createChatBot(name, belongTo) {
@@ -494,6 +513,10 @@ class BaseDbUserChatBot {
         });
     }
 
+    reply(...messages) {
+        this.replies.push(...messages);
+    }
+
     replyText(...texts) {
         for (const text of texts) {
             this.replies.push(new TextMessage(text));
@@ -576,7 +599,8 @@ class AlarmSetter extends BaseDbUserChatBot {
             } else {
                 stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
                 await this.#save();
-                this.replyText(__('reply.youHaveSet', params.datetime));
+                this.#replyFlexAlarm();
+                this.replyText(__('reply.alarmScheduled', params.datetime));
             }
             return this.abort();
         } else if (data == 'alarm-setter,noThanks') {
@@ -599,6 +623,14 @@ class AlarmSetter extends BaseDbUserChatBot {
             alarmTime,
             __friendly_time: this.belongTo.toDatetimeString(alarmTime)
         });
+    }
+
+    #replyFlexAlarm() {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        let flex = flexs.alarmScheduled(__, stat.holderData.alarmTime, stat.timezone);
+        this.reply(new FlexMessage(flex));
     }
 
     setAudio(filename) {
