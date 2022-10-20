@@ -461,16 +461,16 @@ class BaseDbUserChatBot {
 
     onAbort() { unexpected('not implemented') }  // subclass except ChatBot must implement it
 
-    async sendText(text, tag) {
-        return this.abort().sendText(...arguments);
+    async reactText(text, tag) {
+        return this.abort().reactText(...arguments);
     }
 
-    async sendAudio(filename) {
-        return this.abort().sendAudio(...arguments);
+    async reactAudio(filename) {
+        return this.abort().reactAudio(...arguments);
     }
 
-    async sendPostback(data, params) {
-        return this.abort().sendPostback(...arguments);
+    async reactPostback(data, params) {
+        return this.abort().reactPostback(...arguments);
     }
 
 }
@@ -481,7 +481,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
     ////////////////// CHATBOT SENDS /////////////////////
 
-    async sendText(text, tag) { /* user text, and corresponding tag */
+    async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
         const __ = this.translator;
 
@@ -494,14 +494,14 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         return this.replyText(__('reply.hellomsg', text));
     }
 
-    async sendAudio(filename) {
+    async reactAudio(filename) {
         const stat = this.stat;
         const __ = this.translator;
 
         return this.transformTo('alarm-setter').setAudio(filename);
     }
 
-    async sendPostback(data, params) {
+    async reactPostback(data, params) {
         const stat = this.stat;
         const __ = this.translator;
 
@@ -520,7 +520,7 @@ class AlarmSetter extends BaseDbUserChatBot {
         __tmp_clear_state();
     }
 
-    async sendText(text, tag) { /* user text, and corresponding tag */
+    async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
         const __ = this.translator;
 
@@ -530,10 +530,10 @@ class AlarmSetter extends BaseDbUserChatBot {
             return this.replyText(__('reply.okay'));
         }
 
-        return super.sendText(...arguments);
+        return super.reactText(...arguments);
     }
 
-    async sendPostback(data, params) {
+    async reactPostback(data, params) {
         const stat = this.stat;
         const __ = this.translator;
 
@@ -543,7 +543,7 @@ class AlarmSetter extends BaseDbUserChatBot {
             return this.replyText(__('reply.youHaveSet', params.datetime));
         }
 
-        return super.sendText(...arguments);
+        return super.reactText(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
@@ -578,11 +578,11 @@ class LangSelector extends BaseDbUserChatBot {
         this.__tmp_clear_state();
     }
 
-    async sendText(text, tag) {
+    async reactText(text, tag) {
         if (langs.includes(tag)) {
             return this.setLang(tag);
         }
-        return super.sendText(...arguments);
+        return super.reactText(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
@@ -678,7 +678,7 @@ class DbUser {
         if (this.storedData.tags.hasOwnProperty(userText)) {
             tag = this.storedData.tags[userText];
         }
-        await this.chatbot.sendText(userText, tag);
+        await this.chatbot.reactText(userText, tag);
         return this.replyMessage();
     }
 
@@ -701,14 +701,14 @@ class DbUser {
         );
 
         /* reply message */
-        await this.chatbot.sendAudio(filename);
+        await this.chatbot.reactAudio(filename);
         return this.replyMessage();
     }
 
     async onPostback() {
         const event = this.event;
 
-        await this.chatbot.sendPostback(event.postback.data, event.postback.params);
+        await this.chatbot.reactPostback(event.postback.data, event.postback.params);
         return this.replyMessage();
     }
 
