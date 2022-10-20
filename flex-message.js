@@ -159,6 +159,8 @@ exports.alarmScheduled = function (__, timestamp, timezone, alarmId) {
         lbs.push(__(`flex.alarm.lb_${i}`));
     }
 
+    lbs[0] = alarmId.toUpperCase();
+
     let flex = alarmScheduledJSON(emoji, lbs, ...timeString(__, d), dateString(__, d), alarmId);
     console.log('flex', JSON.stringify(flex));
     return flex;
