@@ -575,11 +575,13 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         const __ = this.translator;
 
         /* empty for now */
-        if (data.startsWith('flex,edit=')) {
+        let prefix = 'flex,edit=';
+        if (data.startsWith(prefix)) {
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             }else {
-                return this.replyText(`__tmp_you have done some edit... ${params.datetime}`);
+                let alarmId = data.slice(prefix.length);
+                return this.belongTo.setHolder('alarm-setter').loadEditAbort(alarmId, params.datetime);
             }
         }
     }
@@ -605,8 +607,9 @@ class AlarmSetter extends BaseDbUserChatBot {
                 console.warn('unexpected no datetime');
             } else {
                 stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
-                this.#replyFlexAlarm(await this.#save());
-                this.replyText(__('reply.alarmScheduled', params.datetime));
+                this.alarmId = `alarm_${stat.alarmId++}`;  // acquire a new alarm id
+                this.alarmData = stat.holderData;
+                await this.#saveAndReply();
             }
             return this.abort();
         } else if (data == 'alarm-setter,noThanks') {
@@ -619,27 +622,37 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
-    async #save() {
-        const stat = this.stat;
-        const __ = this.translator;
-
-        const { audio, alarmTime } = stat.holderData;
-        let alarmId = `alarm_${stat.alarmId++}`;
-        await this.db.doc(alarmId).set({
+    #generateAlarmData({ audio, alarmTime, version }) {
+        version = (version || 0) + 1;
+        return {
             audio,
             alarmTime,
+            version,
             __friendly_time: this.belongTo.toDatetimeString(alarmTime)
-        });
-
-        return alarmId;
+        };
     }
 
-    #replyFlexAlarm(alarmId) {
+    async #saveAndReply(alarmId = null) {
+        if (!this.alarmId || !this.alarmData) {
+            unexpected('alarmId or alarmData is not set')
+        }
+
+        await this.#_save(alarmId);
+        this.#_replyFlexAlarm();
+    }
+
+    async #_save() {
+        this.alarmData = this.#generateAlarmData(this.alarmData);  // for recalculate __friendly_time
+        return this.db.doc(this.alarmId).set(this.alarmData);
+    }
+
+    #_replyFlexAlarm() {  /* you should only call this method after #_save */
         const stat = this.stat;
         const __ = this.translator;
 
-        let flex = flexs.alarmScheduled(__, stat.holderData.alarmTime, stat.timezone, alarmId);
+        let flex = flexs.alarmScheduled(__, this.alarmData.alarmTime, stat.timezone, this.alarmId);
         this.reply(new FlexMessage(flex));
+        this.replyText(__('reply.alarmScheduled'));
     }
 
     setAudio(filename) {
@@ -656,6 +669,15 @@ class AlarmSetter extends BaseDbUserChatBot {
             new DatetimePicker('alarm-setter', __('label.pickATime')),
             new PostbackAction('alarm-setter,noThanks', __('label.noThanks'))
         );
+    }
+
+    async loadEditAbort(alarmId, datetime) {  // load alarm, edit and save, and abort
+        this.alarmId = alarmId;
+        this.alarmData = (await this.db.doc(this.alarmId).get()).data();
+
+        this.alarmData.alarmTime = this.belongTo.parseDatetime(datetime);
+        await this.#saveAndReply();
+        return this.abort();
     }
 
 }
