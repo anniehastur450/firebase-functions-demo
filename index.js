@@ -242,6 +242,30 @@ async function originalProcessing(event, request, response) {
 
 }
 
+/* datetime related */
+// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse
+class DateUtility {
+    static suffix(timezone) {  // timezone in hours
+        if (!timezone) return 'Z';
+        var sign = '-+'[+(timezone > 0)];
+        var totalmin = Math.abs(timezone) * 60;
+        var hr = Math.floor(totalmin / 60);
+        return sign + printf('%02d:%02d', hr, totalmin % 60);
+    }
+    static toDatetimeString(timestamp, timezone) {
+        var s = new Date(timestamp + timezone * 3600 * 1000).toISOString();
+        return s.slice(0, -1) + this.suffix(timezone);
+    }
+    static parseDatetime(datetime, timezone) {
+        /* datetime format look like 2017-12-25T01:00 */
+        var ret = Date.parse(datetime + this.suffix(timezone));
+        if (isNaN(ret)) {
+            console.warn(`unexpected NaN: ${datetime + this.suffix(timezone)}`);
+        }
+        return ret;
+    }
+}
+
 ////////////////// CODE START /////////////////////
 
 function unexpected(errorMessage) {
@@ -291,6 +315,7 @@ function applyDefault(sourceData, defaultData) {
 function defaultUserData() {
     return {
         lang: null,   // or 'en', 'zh', null mean unset
+        alarmId: 0,   // monotonic counter for alarm id
         timezone: 8,  // only support utc+8 for now, user selected time will minus this
         tags: {},     // store quick reply its corresponding tag
         holder: null, // or 'alarm-setter', state holder
@@ -535,6 +560,10 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     static NAME = register('alarm-setter', this);
 
+    get db() {
+        return this.belongTo.db.collection('alarms');
+    }
+
     ////////////////// CHATBOT SENDS /////////////////////
 
     async reactPostback(data, params) {
@@ -545,6 +574,8 @@ class AlarmSetter extends BaseDbUserChatBot {
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             } else {
+                stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
+                await this.#save();
                 this.replyText(__('reply.youHaveSet', params.datetime));
             }
             return this.abort();
@@ -557,6 +588,18 @@ class AlarmSetter extends BaseDbUserChatBot {
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
+
+    async #save() {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        const { audio, alarmTime } = stat.holderData;
+        await this.db.doc(`alarm_${stat.alarmId++}`).set({
+            audio,
+            alarmTime,
+            __friendly_time: this.belongTo.toDatetimeString(alarmTime)
+        });
+    }
 
     setAudio(filename) {
         const stat = this.stat;
@@ -693,6 +736,19 @@ class DbUser {
             stat.tags = {};
         }
         return this.chatbot;  // this.chatbot becomes new holder
+    }
+
+    /* ------- parseDatetime ------- */
+    /**
+     * @param {string} datetime
+     * @returns {number} timestamp
+     */
+    parseDatetime(datetime) {
+        /* datetime format look like 2017-12-25T01:00 */
+        return DateUtility.parseDatetime(datetime, this.storedData.timezone);
+    }
+    toDatetimeString(timestamp) {
+        return DateUtility.toDatetimeString(timestamp, this.storedData.timezone);
     }
 
     async save() {
