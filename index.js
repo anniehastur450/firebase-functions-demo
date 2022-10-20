@@ -242,6 +242,8 @@ async function originalProcessing(event, request, response) {
 
 }
 
+////////////////// CODE START /////////////////////
+
 function unexpected(errorMessage) {
     throw new Error(errorMessage);
 }
@@ -346,8 +348,16 @@ class TextMessage {
 
 ////////////////// CHATBOT /////////////////////
 
+function createChatBot(name, belongTo) {
+    if (!chatbotsLookup.hasOwnProperty(name)) {
+        console.warn(`chatbot ${name} not exists, set name to null`);
+        name = null;
+    }
+    return new chatbotsLookup[name](belongTo);
+}
+
 /*
-const chatbots is generated at runtime, which will look like this:
+const chatbotsLookup is generated at runtime, which will look like this:
 {
     'null': ChatBot,
     'alarm-setter': AlarmSetter,
@@ -355,13 +365,13 @@ const chatbots is generated at runtime, which will look like this:
 }
 
 */
-const chatbots = {};
+const chatbotsLookup = {};
 function register(name, theClass) {
-    if (chatbots.hasOwnProperty(name)) {
+    if (chatbotsLookup.hasOwnProperty(name)) {
         console.error(`name ${name} already exist`)
         throwRegisterFailure(theClass);
     }
-    chatbots[name] = theClass;
+    chatbotsLookup[name] = theClass;
     return name;
 }
 function throwRegisterFailure(theClass) {
@@ -384,8 +394,10 @@ class BaseDbUserChatBot {
         if (!this.constructor.hasOwnProperty('NAME')) {
             throwRegisterFailure(this.constructor);
         }
-        /** @type {string} */
-        this.name = this.constructor.NAME;
+    }
+
+    get name() {
+        return this.constructor.NAME;
     }
 
     get stat() {
@@ -406,19 +418,13 @@ class BaseDbUserChatBot {
 
     ////////////////// CHATBOT TRANSFORMER /////////////////////
 
-    abort() {  // go to fallback
-        this.onAbort();
-        return this.transformTo(null);
-    }
-
-    transformTo(name) {
-        this.belongTo.__err_transform_count++;
-        if (this.belongTo.__err_transform_count > 100) {
-            console.error('transform too many times!')
-            console.error('is your program stuck?')
+    abort() {  // go to default chatbot
+        if (`${this.name}` == 'null') {
+            /* you cannot call abort on default chatbot */
+            unexpected(`You cannot call abort() on ${this.constructor.name}!`)
         }
-        this.stat.holder = name;
-        return this.belongTo.getChatBot(name);
+        this.onAbort();
+        return this.belongTo.setHolder(null, this.onAbort());
     }
 
     ////////////////// CHATBOT REPLIES /////////////////////
@@ -451,15 +457,10 @@ class BaseDbUserChatBot {
 
     ////////////////// EMPTY CHATBOT SENDS /////////////////////
 
-    __tmp_clear_state() {
-        const stat = this.stat;
-
-        stat.holder = null;
-        stat.holderData = {};
-        stat.tags = {};
+    onAbort() {  // subclass override this to handle onAbort
+        /* return set holder clear true or false, default clear = true */
+        return true;
     }
-
-    onAbort() { unexpected('not implemented') }  // subclass except ChatBot must implement it
 
     async reactText(text, tag) {
         return this.abort().reactText(...arguments);
@@ -486,7 +487,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         const __ = this.translator;
 
         if (text == 'lang') {
-            return this.transformTo('lang-selector').changeLang();
+            return this.belongTo.setHolder('lang-selector').changeLang();
         }
         if (tag != null) {
             console.warn(`unhandled tag ${tag}, ${text}`);
@@ -498,7 +499,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         const stat = this.stat;
         const __ = this.translator;
 
-        return this.transformTo('alarm-setter').setAudio(filename);
+        return this.belongTo.setHolder('alarm-setter').setAudio(filename);
     }
 
     async reactPostback(data, params) {
@@ -516,18 +517,15 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     ////////////////// CHATBOT SENDS /////////////////////
 
-    onAbort() {
-        __tmp_clear_state();
-    }
-
     async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
         const __ = this.translator;
 
         if (tag == 'label.noThanks') {
             /* clear setting alarm */
-            this.__tmp_clear_state();
-            return this.replyText(__('reply.okay'));
+            // this.__tmp_clear_state();
+            this.replyText(__('reply.okay'));
+            return this.abort();
         }
 
         return super.reactText(...arguments);
@@ -539,8 +537,9 @@ class AlarmSetter extends BaseDbUserChatBot {
 
         if (params.datetime) {
             /* clear setting alarm */
-            this.__tmp_clear_state();
-            return this.replyText(__('reply.youHaveSet', params.datetime));
+            // this.__tmp_clear_state();
+            this.replyText(__('reply.youHaveSet', params.datetime));
+            return this.abort();
         }
 
         return super.reactText(...arguments);
@@ -552,7 +551,6 @@ class AlarmSetter extends BaseDbUserChatBot {
         const stat = this.stat;
         const __ = this.translator;
 
-        stat.holder = 'alarm-setter';
         stat.tags = {
             [__('label.noThanks')]: 'label.noThanks'
         };
@@ -573,10 +571,6 @@ class LangSelector extends BaseDbUserChatBot {
     static NAME = register('lang-selector', this);
 
     ////////////////// CHATBOT SENDS /////////////////////
-
-    onAbort() {
-        this.__tmp_clear_state();
-    }
 
     async reactText(text, tag) {
         if (langs.includes(tag)) {
@@ -640,12 +634,33 @@ class DbUser {
         return this.#__;
     }
 
+    get chatbot() {
+        /* return chatbot by holder, null is deafult chatbot */
+        return this.#getChatBot(this.storedData.holder ?? null);
+    }
     #cachedBots = {};
-    getChatBot(name) {
+    #getChatBot(name) {
         if (!this.#cachedBots[name]) {
-            this.#cachedBots[name] = new chatbots[name](this);
+            this.#cachedBots[name] = createChatBot(name, this);
         }
         return this.#cachedBots[name];
+    }
+
+    setHolder(name, clear = true) {
+        this.__err_transform_count++;  /* accidentally infinite loop check */
+        if (this.__err_transform_count > 100) {
+            console.error('transform too many times!')
+            console.error('is your program stuck?')
+        }
+
+        const stat = this.storedData;
+
+        stat.holder = name;
+        if (clear) {
+            stat.holderData = {};
+            stat.tags = {};
+        }
+        return this.chatbot;  // this.chatbot becomes new holder
     }
 
     async save() {
@@ -669,6 +684,8 @@ class DbUser {
         }
         return client.replyMessage(this.replyToken, messages);
     }
+
+    /* ------- onText, onAudio, onPostback ------- */
 
     async onText() {
         const event = this.event;
@@ -717,12 +734,6 @@ class DbUser {
         var userData = (await this.db.get()).data() ?? {};
         /** @type {ReturnType<typeof defaultUserData>} */
         this.storedData = applyDefault(userData, defaultUserData());
-
-        if (this.storedData.holder) {
-            this.chatbot = this.getChatBot(this.storedData.holder);
-        } else {
-            this.chatbot = this.getChatBot(null);
-        }
     }
 
     async startProcessing() {
