@@ -519,7 +519,7 @@ class BaseDbUserChatBot {
         }
     }
 
-    ////////////////// EMPTY CHATBOT SENDS /////////////////////
+    ////////////////// EMPTY CHATBOT REACTS /////////////////////
 
     onAbort() {  // subclass override this to handle onAbort
         /* return set holder clear true or false, default clear = true */
@@ -544,7 +544,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
     static NAME = register(null, this);
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
@@ -592,7 +592,7 @@ class AlarmSetter extends BaseDbUserChatBot {
         return this.belongTo.db.collection('alarms');
     }
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostback(data, params) {
         const stat = this.stat;
@@ -682,7 +682,7 @@ class LangSelector extends BaseDbUserChatBot {
 
     static NAME = register('lang-selector', this);
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostback(data, params) {
         const stat = this.stat;
