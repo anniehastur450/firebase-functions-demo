@@ -1,43 +1,43 @@
 {
     "reply.chosenLang.en": "Switched to English",
     "reply.chosenLang.zh": "已切換到中文",
-    "reply.chosenLang.jp": "日本語に切り替えました。",
+    "reply.chosenLang.ja": "日本語に切り替えました。",
 
     "reply.sentAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
     "reply.sentAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
-    "reply.sentAudio.jp": "音声メッセージを送信したようです。 アラームとして設定しますか？",
+    "reply.sentAudio.ja": "音声メッセージを送信したようです。 アラームとして設定しますか？",
 
     "reply.youHaveSet.en": "You have set %s",
     "reply.youHaveSet.zh": "你已經設定了 %s",
-    "reply.youHaveSet.jp": "%s を設定しました",
+    "reply.youHaveSet.ja": "%s を設定しました",
 
     "reply.alarmScheduled.en": "An alarm has been set.",
     "reply.alarmScheduled.zh": "已設定鬧鐘。",
-    "reply.alarmScheduled.jp": "アラーム タスクがスケジュールされています。",
+    "reply.alarmScheduled.ja": "アラーム タスクがスケジュールされています。",
 
     "reply.okay.en": "Okay",
     "reply.okay.zh": "好的",
-    "reply.okay.jp": "わかった",
+    "reply.okay.ja": "わかった",
 
     "reply.chooseLang.en": "Which language do you prefer?",
     "reply.chooseLang.zh": "你更喜歡哪種語言？",
-    "reply.chooseLang.jp": "どの言語が好きですか?",
+    "reply.chooseLang.ja": "どの言語が好きですか?",
 
     "label.pickATime.en": "⏰ Pick a time",
     "label.pickATime.zh": "⏰ 選擇時間",
-    "label.pickATime.jp": "⏰ 時間を選ぶ",
+    "label.pickATime.ja": "⏰ 時間を選ぶ",
 
     "label.noThanks.en": "No thanks",
     "label.noThanks.zh": "不，謝謝",
-    "label.noThanks.jp": "結構です",
+    "label.noThanks.ja": "結構です",
 
     "areyouok.en": "Are you ok?",
     "areyouok.zh": "你OK嗎？",
-    "areyouok.jp": "大丈夫ですか？",
+    "areyouok.ja": "大丈夫ですか？",
 
     "reply.hellomsg.en": "Hello %s.",
     "reply.hellomsg.zh": "你好 %s 。",
-    "reply.hellomsg.jp": "こんにちは %s。",
+    "reply.hellomsg.ja": "こんにちは %s。",
 
     "flex.alarm.lb_1.en": "ALARM",
     "flex.alarm.lb_2.en": "AUDIO MESSAGE",
@@ -49,16 +49,20 @@
     "flex.alarm.lb_3.zh": "編輯",
     "flex.alarm.lb_4.zh": "查看所有鬧鐘",
 
-    "flex.alarm.lb_1.jp": "アラーム",
-    "flex.alarm.lb_2.jp": "音声メッセージ",
-    "flex.alarm.lb_3.jp": "編集する",
-    "flex.alarm.lb_4.jp": "アラームを表示",
-
-    "keyword.lang.en": "",
+    "flex.alarm.lb_1.ja": "アラーム",
+    "flex.alarm.lb_2.ja": "音声メッセージ",
+    "flex.alarm.lb_3.ja": "編集する",
+    "flex.alarm.lb_4.ja": "アラームを表示",
 
     "lang.en": "English",
     "lang.zh": "中文",
-    "lang.jp": "日本語",
+    "lang.ja": "日本語",
+
+    "langs": [
+        "en",
+        "zh",
+        "ja"
+    ],
 
     "emoji.clock": "🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🕛🕧",
 

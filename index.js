@@ -443,11 +443,7 @@ function throwRegisterFailure(theClass) {
         + `    static NAME = ${register.name}('{{THE_BOT_NAME}}', this);`);
 }
 
-const langs = [
-    'en',
-    'zh',
-    'jp',
-]
+const langs = i18n.get('langs');
 
 class BaseDbUserChatBot {
     /**
