@@ -18,5 +18,9 @@
     "firebase-functions": "^4.0.1",
     "printf": "^0.6.1"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@google-cloud/translate": "^7.0.3",
+    "dotenv": "^16.0.3"
+  }
 }

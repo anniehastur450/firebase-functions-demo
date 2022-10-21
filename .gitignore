@@ -1,2 +1,4 @@
 node_modules/
 .runtimeconfig.json
+.env
+*-firebase-adminsdk-*.json
