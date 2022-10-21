@@ -29,16 +29,13 @@ const project = process.env.GCLOUD_PROJECT;
 
 ////////////////// LINE /////////////////////
 const line = require("@line/bot-sdk");
-const client = new line.Client(functions.config().secrets.lineClientConfig);
+const client = new line.Client(functions.config().secrets.lineClientConfig)
 
 ////////////////// I18N /////////////////////
 const i18n = require('./i18n');
 
 ////////////////// FLEX MESSAGE /////////////////////
 const flexs = require('./flex-message');
-
-var msgId; // used it as naming standard for audio records, only message type has it, not postback type
-var userAction; // event.type for postback type, evenet.message.type for message type
 
 // quickReply has 1 extra attribute => "quickReply"
 // https://developers.line.biz/en/docs/messaging-api/using-quick-reply/#set-quick-reply-buttons
@@ -64,186 +61,6 @@ exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequ
         response.sendStatus(404)
     })
 })
-
-function timeParser(timeObj) {
-    let d = timeObj
-    var hr = d.getUTCHours() + 8
-    if (hr >= 24) hr = hr - 24
-    datetime = printf("%d-%02d-%02d_%02d-%02d-%02d",
-        d.getFullYear(), (d.getMonth() + 1), d.getDate(),
-        hr, d.getMinutes(), d.getSeconds()
-    )
-    return datetime
-}
-
-async function originalProcessing(event, request, response) {
-
-    userId = event.source.userId;
-    replyToken = event.replyToken;
-    timestamp = event.timestamp;
-    var userText = null;
-    var d = new Date(timestamp);
-    datetime = timeParser(d)
-
-    console.log(
-        "\n\n----------------------------------------------------------------------------\n",
-        "time: ", datetime, "\n\n",
-        "event: ", event, "\n\n"
-    )
-
-    // decipher type of message user has sent, store into userAction variable
-    if (event.type === "message") {
-        userAction = event.message.type
-        msgId = event.message.id;
-        if (event.message.type === "text")
-            userText = event.message.text
-    } else {
-        userAction = event.type
-        if (userAction === "postback") {
-            var eventPbCode = event.postback.data
-        }
-    }
-
-    // store userdata to database (chat- & postback-history)
-    var currUser = db.collection("users").doc(userId.toString())
-    var pbLogs = await updateToDatebase(currUser, userId, userAction, userText, timestamp, datetime, eventPbCode, replyToken)
-    var name = await checkUserInDatebase(userId)
-
-    // check previous userAction contains postback or not
-    var latestPb = null
-    var idxPb = -1
-    if (!pbLogs.empty) {
-        idxPb = (await currUser.collection("postback-history").get()).size
-        idxPb = printf("%02d", idxPb)
-        var latestPb = await currUser.collection("postback-history").doc(`pb${idxPb}`).get()
-    }
-
-    // in case of user repeatedly making mistake of sending audio msg for a flex message,
-    // by storing the previous replytoken in database, using this, we're able to only send flex message once,
-    // bcuz the replytoken can only be used oncei
-    if (latestPb !== null) {
-        console.log("latest Postback: ", latestPb.data(), "\n\n")
-        latestPb_replytoken = latestPb.data().replyToken
-        latestPb_name = latestPb.data().name
-    }
-
-    var userLang = (await currUser.get())?.data();
-    console.log('lang', userLang)
-    userLang = userLang.lang ?? 'en';
-    if (userText == 'change lang') {
-        userLang = userLang == 'en' ? 'zh' : 'en';
-        await currUser.set({ lang: userLang }, { merge: true });
-    }
-
-    var __ = i18n.translate(userLang);
-
-    // proceed LineBot differently according to user input (aka. userAction)
-    if (userAction == "text") {
-        // replyTextMsg(replyToken, `HelloText ${name}, ${userText}`)
-        replyTextMsg(replyToken, __('message.reply', name, userText))
-    }
-    else if (userAction == "audio") {
-        // upload audio msg
-        var duration = event.message.duration;
-        var filename = `audio_${datetime}.m4a`
-        var audio_url_online = await uploadAudioMsg(msgId, filename, duration)
-        var audio_url_local = getPubUrl(request, filename)
-        // console.log('audio_url: ', audio_url_local)
-        // reply flex msg, if latest postback = "recordVoice"
-
-        if (latestPb !== null && latestPb.data().pbCode === "recordVoice") {
-            /*
-            if the latest postback in database = "recordVoice", 
-            meaning in this current request,
-            user has already sent voice msg, 
-            hence now ask user further questions,
-            by using flex message
-            */
-            json = fs.readFileSync('flex_data.json');
-            data = JSON.parse(json)
-            // give identifier according to flex message postback
-            // chg setVoice=yes Postback Data
-            data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"] = `${latestPb_name}_setVoice=yes`
-            // chg setVoice=no Postback Data
-            data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setVoice=no`
-            // printing to check
-            console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][0]["action"]["data"])
-            console.log(data["1"]["body"]["contents"][0]["contents"][1]["contents"][1]["action"]["data"])
-            // chg setTimer=yes Postback Data
-            data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"] = `${latestPb_name}_setTimer=yes`
-            console.log(data["1"]["body"]["contents"][1]["contents"][1]["action"]["data"])
-
-            replyFlexMsg(latestPb_replytoken, data["1"])
-
-        }
-        else if (latestPb !== null && latestPb.data().pbCode.includes("setVoice=no")) {
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            replyAudioMsg(latestPb_replytoken, `This is the alarm at same time, but new audio, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-            replyConfirmTemplate(replyToken, confBackendData[0])
-        }
-        // testing
-        else if (latestPb === null) {
-            replyAudioMsg(replyToken, `HelloVoice ${name}`, audio_url_local, duration)
-        }
-    }
-    /* 
-    !!!! 
-    HERE to DECIPHER how user REACT to FLEX MSG, 
-    since every question require button pressing,
-    so every button creates "postback", 
-    and from looking at "postback",
-    we can decipher whether it is a yes or no, from every question
-    !!!! 
-    */
-    else if (userAction === "postback") {
-
-        if (latestPb !== null &&
-            (event.postback.data.includes("setVoice=yes") ||
-                event.postback.data.includes("resetVoice=yes")
-            )) {
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            var data2 = await logAudioAlarmToDatebase(currUser, userId, timestamp, datetime, alarm_name, alarm_url)
-            // if all went correctly, must data1 === data2
-            console.log(`data1, name: ${data1[0]}, url: ${data1[1]}`)
-            console.log(`data2, name: ${data2[0]}, url: ${data2[1]}`)
-            pushMsg(userId, `You have selected this as an alarm`)
-        }
-        else if (latestPb !== null && event.postback.data.includes("setVoice=no")) {
-            pushMsg(userId, `Please record voice message now AGAIN :(... as an alarm`)
-        }
-        else if (latestPb !== null && event.postback.data.includes("setTimer=yes")) {
-            // update jsondata here too, for setVoice=no, add the info of latest timer to the file naming
-            console.log(`latest Postback = ${latestPb_name}, its pbCode = ${latestPb.data().pbCode}`)
-            timer = event.postback.params.datetime
-            var d2 = new Date(timer)
-            // mm hh DD MM
-            alarmtime_cron = printf("%02d %02d %02d %02d *",
-                d2.getMinutes(), d2.getHours(), d2.getDate(), (d2.getMonth() + 1))
-            var alarmtime_normal = timeParser(d2)
-            console.log(alarmtime_cron)
-            var alarmdata = await getLatestAudioMsgData(request);
-            var alarm_name = alarmdata[0]
-            var alarm_url = alarmdata[1]
-            replyAudioMsg(latestPb_replytoken, `This is the alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-        }
-        else if (latestPb !== null && event.postback.data.includes("setting=yes")) {
-            pushMsg(userId, `Congrats... you have sucessfully finished setting alarm :)`)
-            var data1 = await getLatestAudioMsgData(request)
-            var alarm_name = data1[0]
-            var alarm_url = data1[1]
-            replyAudioMsg(latestPb_replytoken, `Finally, your alarm at ${alarmtime_normal}, correct?\n\n name: ${alarm_name}\n url: ${alarm_url}`, alarm_url, "10000")
-        }
-        else if (eventPbCode === "recordVoice") {
-            pushMsg(userId, `Please record voice message now... as an alarm`)
-        }
-
-    }
-
-}
 
 /* datetime related */
 // see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse
@@ -393,7 +210,20 @@ class TextMessage {
     }
 
 }
+class AudioMessage {
+    constructor(url, duration) {
+        this.url = url;
+        this.duration = duration;
+    }
 
+    toLINEObject() {
+        return {
+            type: "audio",
+            originalContentUrl: this.url,
+            duration: this.duration
+        }
+    }
+}
 class FlexMessage {
     constructor(flex, altText = 'this is a flex message') {
         this.flex = flex;
@@ -408,6 +238,28 @@ class FlexMessage {
         };
     }
 
+}
+
+class ImageCarousel {
+    constructor(flexArr, altText = 'your alarms') {
+        console.log("imagecouresel flexArr:", flexArr)
+        this.flexArr = flexArr;
+        this.altText = altText;
+        var flexObjs = []
+        for (const flex of this.flexArr) {
+            console.log("imagecouresel flex:", flex)
+            flexObjs.push(flex)
+        }
+        this.flexObjs = flexObjs
+        console.log("this.flexObjs:\n", this.flexObjs)
+    }
+
+    toLINEObject() { // return Message object
+        return {
+            "type": "carousel",
+            "contents": this.flexObjs
+        }
+    }
 }
 
 ////////////////// CHATBOT /////////////////////
@@ -460,6 +312,10 @@ class BaseDbUserChatBot {
         return this.constructor.NAME;
     }
 
+    get userId() {
+        return this.belongTo.userId;
+    }
+
     get stat() {
         return this.belongTo.storedData;
     }
@@ -476,6 +332,79 @@ class BaseDbUserChatBot {
         return this.belongTo.quickReplies;
     }
 
+    get audio_filepathname() {
+        // olny place where filepathname created
+        return `${this.userId}/${this.stat.holderData.audio}`;
+    }
+
+    get watchOrder() {
+        return this.stat.watchOrder
+    }
+
+    get db() {
+        return this.belongTo.db.collection('alarms');
+    }
+    async DBAlarmData() {
+        // audio,duration,url, alarmTime, version, timerString
+        return (await this.db.doc(this.alarmIdString).get()).data();
+    }
+    // async DBAlarmData(alarmIdString) {
+    //     // audio,duration,url, alarmTime, version, timerString
+    //     return (await this.db.doc(alarmIdString).get()).data();
+    // }
+    get alarmIdString() {
+        return printf("%02d", this.stat.alarmId);
+    }
+    async alarmUrl() {
+        console.log("super class super async getters")
+        return (await this.DBAlarmData()).url;
+    }
+    async alarmTime() {
+        console.log("super class super async getters")
+        return (await this.DBAlarmData()).alarmTime;
+    }
+    async alarmDuration() {
+        console.log("super class super async getters")
+        return (await this.DBAlarmData()).duration;
+    }
+    async alarmTimerString(key) {
+        console.log("super class super async getters")
+        if (key == 'long') {
+            return (await this.DBAlarmData()).timerString;
+        } else if (key == 'ui') {
+            return (await this.DBAlarmData()).timerString.substring(5, 16).replace('T', '  ')
+        }
+        return (await this.DBAlarmData()).timerString.substring(0, 16).replace('T', ' ');
+    }
+
+    async generateAlarmWatcherQuickReplies() {
+        /* showing all alarms in QuickReplies format, with sorting feature */
+        const __ = this.translator;
+        const size = await getDocLatestIdx(this.belongTo, 'alarms', false, false)
+
+        for (let i = 0; i < size; i++) {
+            var idxDigit
+            this.watchOrder == '+' ? idxDigit = i + 1 : idxDigit = size - i;
+            console.log('inner:　', i, "idxDigit: ", idxDigit)
+            const data = (await this.db.doc(printf("%02d", idxDigit)).get()).data()
+            const timerString = data.timerString.substring(5, 16).replace('T', '  ')
+            var label = `⏰ ${idxDigit},  ${timerString}`
+
+            this.addQuickReply(new PostbackAction(`alarm_id,${idxDigit}`, label));
+        }
+        this.addQuickReply(new PostbackAction('sort-changer', __('label.seeAlarmsOrder')));
+        this.addQuickReply(new PostbackAction('see-all', __('label.seeAllAlarms')));
+    }
+
+    async replyUntilAlarm(alarmId) {
+        const __ = this.translator;
+        const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
+        const timerString = data.timerString.substring(5, 16).replace('T', '  ')
+        const untilAlarm = Number.parseInt(Date.now()) - Number.parseInt(timerString)
+        console.log(Date.now(), timerString, Number.parseInt(Date.now()), Number.parseInt(timerString))
+        const d = new Date(untilAlarm)
+        this.replyText(__('reply.alarmScheduled', this.alarmId, timerString, d.getUTCDay() - 4, d.getUTCHours(), d.getUTCMinutes())); // reply.alarmScheduled //NOT SURE WHY IT'S MINUS 4
+    }
     ////////////////// CHATBOT TRANSFORMER /////////////////////
 
     abort() {  // go to default chatbot
@@ -519,7 +448,22 @@ class BaseDbUserChatBot {
         }
     }
 
-    ////////////////// EMPTY CHATBOT REACTS /////////////////////
+    replyAudio(...audio_objs) {
+        /**
+         * @params {audio_objs} array of {url: x, duration: y} objects
+         */
+        for (const obj of audio_objs) {
+            const url = obj['url'];
+            const duration = obj['duration'];
+            this.replies.push(new AudioMessage(url, duration));
+        }
+    }
+
+    replyAlarmWatcher() {
+        return this.belongTo.setHolder('alarm-watcher').reactPostback();
+    }
+
+    ////////////////// EMPTY CHATBOT SENDS /////////////////////
 
     onAbort() {  // subclass override this to handle onAbort
         /* return set holder clear true or false, default clear = true */
@@ -544,7 +488,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
     static NAME = register(null, this);
 
-    ////////////////// CHATBOT REACTS /////////////////////
+    ////////////////// CHATBOT SENDS /////////////////////
 
     async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
@@ -569,87 +513,191 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
     async reactPostback(data, params) {
         const stat = this.stat;
         const __ = this.translator;
-
-        /* empty for now */
         let prefix = 'flex,edit=';
         if (data.startsWith(prefix)) {
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
-            }else {
-                let alarmId = data.slice(prefix.length);
-                return this.belongTo.setHolder('alarm-setter').loadEditAbort(alarmId, params.datetime);
+            } else {
+                return this.belongTo.setHolder('alarm-watcher').reactPostback(data, params)
             }
         }
+
     }
 
 }
 
-class AlarmSetter extends BaseDbUserChatBot {
+class AlarmReplier extends BaseDbUserChatBot {
 
-    static NAME = register('alarm-setter', this);
-
-    get db() {
-        return this.belongTo.db.collection('alarms');
-    }
-
-    ////////////////// CHATBOT REACTS /////////////////////
+    static NAME = register('alarm-replier', this);
 
     async reactPostback(data, params) {
         const stat = this.stat;
+        console.log("alarm-replier, pbData: ", data)
+        const alarmId = data.split(',')[1]
+        if (data.includes('alarm_id,')) {
+            var data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
+            // const audio_filepathname = `${this.userId}/${audio_name}`
+            // const audio_md = (await getAudioMetadata(audio_filepathname))[0]
+            this.replyAudio({
+                url: data.url,
+                duration: data.duration
+            })
+            await this.#_replyFlexAlarms(alarmId)
+        } else if (data == 'see-all') {
+            await this.#_replyAllFlexAlarms()
+        }
+
+        return this.belongTo.setHolder('alarm-watcher').reactPostback();
+    }
+
+    async #_replyAllFlexAlarms() {
+        var alarmIds = []
+        const size = await getDocLatestIdx(this.belongTo, 'alarms', false, false)
+        for (let i = 0; i < size; i++) {
+            var idxDigit = i + 1
+            console.log('inner:　', i, "idxDigit: ", idxDigit)
+            const data = (await this.db.doc(printf("%02d", idxDigit)).get()).data()
+            if (data == undefined) continue
+            alarmIds.push(idxDigit)
+        }
+        this.#_replyFlexAlarms(...alarmIds)
+    }
+    async #_replyFlexAlarms(...alarmIds) {  /* you should only call this method after #_save */
         const __ = this.translator;
+        var arr = []
+        for (const alarmId of alarmIds) {
+            const alarmIdString = printf("%02d", alarmId)
+            console.log("replyFlexAlarms doc idx: ", alarmId, ",idx string: ", alarmIdString)
+            var data = (await this.db.doc(alarmIdString).get()).data();
+            console.log(data)
+            let flex = flexs.alarmScheduled(__, data.alarmTime, this.stat.timezone, alarmId);
+            console.log("before pushing, flex: ", flex)
+            arr.push(flex)
+            console.log("after pushing, arr: ", arr)
+        }
+        this.reply(new FlexMessage(new ImageCarousel(arr).toLINEObject()));
+        // this.replyUntilAlarm(alarmId);
+    }
+
+}
+
+class AlarmWatcher extends BaseDbUserChatBot {
+    static NAME = register('alarm-watcher', this);
+
+    #changeAlarmOrder() {
+        this.stat.watchOrder == '+' ? this.stat.watchOrder = '-' : this.stat.watchOrder = '+';
+    }
+
+    async reactPostback(data, params = '') {
+        const stat = this.stat;
+        const __ = this.translator;
+
+        // BUG, SO THIS CAN POST YOUR FLEX MESSAGE FOR THE 1ST TIME, BUT AFTER REEDIT TIMER, THE POSTBACK WILL BE UNDEFINED, I DUNNO WHY, AND IT CANNOT GO HERE AGAIN
+        /* empty for now */
+        let prefix = 'flex,edit=';
+        if (data != null) {
+            if (data.startsWith(prefix)) {
+                if (!params?.datetime) {
+                    console.warn('unexpected no datetime');
+                } else {
+                    let alarmId = data.slice(prefix.length);
+                    return this.belongTo.setHolder('alarm-setter').loadEditAbort(alarmId, params.datetime);
+                }
+            }
+
+            /* --------------- CHATBOT SELF OWNED ------------------ */
+            if (data == 'sort-changer') {
+                this.#changeAlarmOrder();
+                this.replyText(__('reply.chgAlarmsOrder'));
+                // keep looping for user to play "sorting" feature, no abort options
+            }
+            else if (data.includes('alarm_id,')) {
+                console.log("alarm-replier")
+                return this.belongTo.setHolder('alarm-replier').reactPostback(data);
+            }
+            else if (data.includes('see-all')){
+                return this.belongTo.setHolder('alarm-replier').reactPostback(data);
+            }
+        }
+
+        await this.generateAlarmWatcherQuickReplies();
+        return this.replyText('...arguments');
+    }
+}
+
+class AlarmSetter extends BaseDbUserChatBot {
+    // only this class, using alarm id don't need to call super method
+    static NAME = register('alarm-setter', this);
+
+    ////////////////// CHATBOT SENDS /////////////////////
+
+    async reactPostback(data, params) {
+        const stat = this.stat;
+        this.pbData = data;
+        const __ = this.translator;
+
 
         if (data == 'alarm-setter') {
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             } else {
+                this.alarmId = await getDocLatestIdx(this.belongTo, 'alarms', true, true);  // acquire a new alarm id    `${stat.alarmId++}`
+                stat.alarmId++;
+                stat.watchOrder = '+'
+
                 stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
-                this.alarmId = `alarm_${stat.alarmId++}`;  // acquire a new alarm id
+                stat.holderData.duration = (await getAudioMetadata(this.audio_filepathname))[0].duration
+                stat.holderData.url = await getAudioURL(this.audio_filepathname)
                 this.alarmData = stat.holderData;
+
                 await this.#saveAndReply();
             }
-            return this.abort();
+            // return this.abort();
+            // UNUSED CODE
         } else if (data == 'alarm-setter,noThanks') {
             this.replyText(__('reply.okay'));
             return this.abort();
+        } else if (data == 'alarm-watcher' || data == 'sort-changer') {
+            return this.belongTo.setHolder('alarm-watcher').reactPostback(data);
         }
+
 
         return super.reactText(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
-    #generateAlarmData({ audio, alarmTime, version }) {
+    #generateAlarmData({ audio, duration, url, alarmTime, version, }) {
         version = (version || 0) + 1;
         return {
             audio,
+            duration,
+            url,
             alarmTime,
             version,
-            __friendly_time: this.belongTo.toDatetimeString(alarmTime)
+            timerString: this.belongTo.toDatetimeString(alarmTime)
         };
     }
 
-    async #saveAndReply(alarmId = null) {
+    async #saveAndReply() {
         if (!this.alarmId || !this.alarmData) {
             unexpected('alarmId or alarmData is not set')
         }
+        const __ = this.translator;
+        await this.#_save();
+        await this.replyUntilAlarm(this.alarmId);
+        await this.generateAlarmWatcherQuickReplies();
+        this.belongTo.setHolder('alarm-watcher');
 
-        await this.#_save(alarmId);
-        this.#_replyFlexAlarm();
     }
 
     async #_save() {
-        this.alarmData = this.#generateAlarmData(this.alarmData);  // for recalculate __friendly_time
-        return this.db.doc(this.alarmId).set(this.alarmData);
+        const alarmData = this.alarmData = this.#generateAlarmData(this.alarmData);  // for recalculate timerString
+        await setAudioMetadata(`${this.userId}/${alarmData.audio}`, alarmData.alarmTime, this.alarmId)
+        return this.db.doc(this.alarmIdString).set(alarmData);
     }
 
-    #_replyFlexAlarm() {  /* you should only call this method after #_save */
-        const stat = this.stat;
-        const __ = this.translator;
 
-        let flex = flexs.alarmScheduled(__, this.alarmData.alarmTime, stat.timezone, this.alarmId);
-        this.reply(new FlexMessage(flex));
-        this.replyText(__('reply.alarmScheduled'));
-    }
 
     setAudio(filename) {
         const stat = this.stat;
@@ -658,18 +706,20 @@ class AlarmSetter extends BaseDbUserChatBot {
         stat.holderData = {
             audio: filename,
             alarmTime: null,
-            state: 'sentAudio'
+            state: 'receivedAudio'
         };
-        this.replyText(__('reply.sentAudio'));
-        this.addQuickReply(
-            new DatetimePicker('alarm-setter', __('label.pickATime')),
-            new PostbackAction('alarm-setter,noThanks', __('label.noThanks'))
-        );
+        this.replyText(__('reply.receivedAudio'));
+        this.addQuickReply(new DatetimePicker('alarm-setter', __('label.pickATime')));
+        this.addQuickReplyText(__('label.noThanks'));
+        this.addQuickReply(new PostbackAction('alarm-watcher', __('label.seeAlarms')));
+        // return this.belongTo.setHolder('alarm-watcher');
     }
 
+    // BUG, FLEX MESSAGE BUG IS PROBABLY HERE AND #saveAndReply
     async loadEditAbort(alarmId, datetime) {  // load alarm, edit and save, and abort
         this.alarmId = alarmId;
-        this.alarmData = (await this.db.doc(this.alarmId).get()).data();
+        console.log("loadEditAbort alarm: ", alarmId)
+        this.alarmData = (await this.db.doc(printf("%02d", alarmId)).get()).data();
 
         this.alarmData.alarmTime = this.belongTo.parseDatetime(datetime);
         await this.#saveAndReply();
@@ -682,7 +732,7 @@ class LangSelector extends BaseDbUserChatBot {
 
     static NAME = register('lang-selector', this);
 
-    ////////////////// CHATBOT REACTS /////////////////////
+    ////////////////// CHATBOT SENDS /////////////////////
 
     async reactPostback(data, params) {
         const stat = this.stat;
@@ -734,7 +784,7 @@ class LangSelector extends BaseDbUserChatBot {
 // or https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#typedef-callback-and-param
 /**
  * Possible chatbots.
- * @typedef {(ChatBot|AlarmSetter|LangSelector)} ChatBotLike
+ * @typedef {(ChatBot & AlarmSetter & AlarmWatcher & AlarmReplier & LangSelector)} ChatBotLike
  */
 
 class DbUser {
@@ -853,14 +903,20 @@ class DbUser {
         // TODO: send reply and download/upload simultaneously
         var duration = event.message.duration;
         var msgId = event.message.id;
-        var filename = `audio_${this.userId}_${msgId}.m4a`;
+        var filepathname = `${this.userId}/audio_${msgId}.m4a`;
+        var filename = `audio_${msgId}.m4a`;
         var stream = await client.getMessageContent(msgId);
 
         /* upload audio */
-        await uploadStreamFile(stream, filename,
+        await uploadStreamFile(stream, filepathname,
             {
+                user: this.userId,
+                audio: filename,
                 duration: duration,
-                datetime: timeParser(new Date(event.timestamp))
+                datetime: this.parseDatetime(event.timestamp),
+                alarmTime: null,
+                alarmId: null,
+                timestamp: this.timestamp
             }
         );
 
@@ -871,7 +927,7 @@ class DbUser {
 
     async onPostback() {
         const event = this.event;
-
+        console.log("Postback: ", event.postback.data, "\n\n")
         await this.chatbot.reactPostback(event.postback.data, event.postback.params);
         return this.replyMessage();
     }
@@ -906,7 +962,7 @@ class DbUser {
         }
     }
 }
-
+var host //global var
 exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
 
     // decipher Webhook event sent by LineBot, that triggered by every user input
@@ -915,7 +971,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
     // line sdk types https://github.com/line/line-bot-sdk-nodejs/blob/master/lib/types.ts
     /** @type {line.WebhookRequestBody} */
     const body = request.body;
-
+    host = request.get('host')
     try {
         console.log('\n\nevents length:', body.events.length);
 
@@ -947,275 +1003,166 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
     return response.sendStatus(500);
 });
 
-function extractPbDataToArr(pbCode) {
-    return pbCode.split("_")
+/////////////////////////////// FIREBASE SEARCHING //////////////////////////////
+async function getDocLatestIdx(belongTo, collectionName, toLogNext = true, toString = true) {
+    /**
+     * @param {DbUser} belongTo
+     */
+    const user = belongTo.db
+    // get latest idx to log the next data into same collection directory
+    var idx = (await user.collection(collectionName).get()).size + (+toLogNext);
+    idx = toString ? printf("%02d", idx) : idx;
+    console.log('idx', idx);
+    return idx;
 }
 
-async function logAudioAlarmToDatebase(currUser, userId, timestamp, datetime, name, url) {
-    // log AudioAlarm URL into database
-    var alarmLogs = await currUser.collection("audio-alarm").get()
-    var idx
-    if (alarmLogs.empty) {
-        idx = 1;
-    } else {
-        idx = (await currUser.collection("postback-history").get()).size + 1;
+async function rearrangeDocNaming(belongTo, collectionName, sizeLoss, nameStartConvention = 1) {
+    const size = getDocLatestIdx(belongTo, collectionName, false, false)
+    for (let i = 0; i < size; i++) {
+        const oldName = nameStartConvention + sizeLoss + i
+        const newName = nameStartConvention + i
+        const oldSlot = printf("%02d", oldName)
+        const newSlot = printf("%02d", newName)
+        var doc = await belongTo.db.collection(collectionName).doc(`${oldSlot}`).get()
+        if (doc && doc.exists) {
+            var data = doc.data();
+            // saves the old data to new doc
+            await belongTo.db.collection(collectionName).doc(`${newSlot}`).set(data)
+            // deletes the old doc
+            belongTo.db.collection(collectionName).doc(`${oldSlot}`).delete()
+        }
     }
-    idx = printf("%02d", idx)
-    currUser.collection("audio-alarm").doc(`alarm${idx}`).set({
-        "name": name,
-        "userId": userId,
-        "timestamp": timestamp,
-        "datetime": datetime,
-        "url": url
-    })
-    return [name, url];
 }
 
-async function reupdatePostbackDataToDatebase(currUser) {
-
+function deleteDocWithIdx(belongTo, collectionName, idx, nameStartConvention = 1) {
+    slot = printf("%02d", nameStartConvention + idx)
+    belongTo.db.collection(collectionName).doc(`${slot}`).delete()
+    console.log(`${slot} deleted`)
+    belongTo.stat.alarm_count--;
 }
 
-async function updateToDatebase(currUser, userId, userAction, userText, timestamp, datetime, pbCode, replytoken) {
-    // update user data to Firestore Database
-    var profile = await client.getProfile(userId)
-    profileName = profile.displayName;
-    pictureUrl = profile.pictureUrl;
-
-    // add User Data
-    currUser.set({
-        "name": profileName,
-        "profile pic": pictureUrl,
-    }, { merge: true })
-
-    // add Chat History
-    currUser.collection("chat-history").doc(datetime.toString()).set({
-        "userId": userId,
-        "userAction": userAction,
-        "userText": userText,
-        "timestamp": timestamp,
-        "datetime": datetime
-    })
-
-    // add Postback History
-    var pbLogs = await currUser.collection("postback-history").get()
-    if (userAction === "postback") {
-        var idx
-        if (pbLogs.empty) {
-            idx = 1;
-        } else {
-            idx = (await currUser.collection("postback-history").get()).size + 1;
-        }
-        idx = printf("%02d", idx)
-        currUser.collection("postback-history").doc(`pb${idx}`).set({
-            "name": `pb${idx}`,
-            "userId": userId,
-            "timestamp": timestamp,
-            "datetime": datetime,
-            "pbCode": pbCode,
-            "replyToken": replytoken
-        })
+async function getDocWithIndex(belongTo, collectionName, idx, nameStartConvention = 1) {
+    // to get first one, idx = 0
+    /**
+     * @param {DbUser} belongTo
+     * @param {collectionName} string collection name u want to find
+     * @param {idx} integer for indexing doc from collection
+     * @param {nameStartConvention} integer the naming convention of alarms starts with zero to ease transition to UI string
+     */
+    const user = belongTo.db
+    var size = (await user.collection(collectionName).get()).size
+    if (size == 0) return null
+    if (nameStartConvention + idx > size) {
+        console.warn(`The collection doesn't have enough files for you to use such a big index!\nChoose smaller.`)
+        return null
     }
-    return pbLogs
+    slot = printf("%02d", nameStartConvention + idx)
+    return await user.collection(collectionName).doc(`${slot}`).get()
 }
 
-async function checkUserInDatebase(userId) {
-    // check if user already exist in database
-    const userData = await db.collection("users").doc(userId).get()
-    var name = "xxx"
-    if (userData.exists)
-        name = userData.data().name
-    else
-        replyTextMsg(replyToken, "You are not the customer yet, hence now you will automatically become one, and shall never see this message again.")
-    return name;
-}
-
-function replyFlexMsg(replytoken, flex_data) {
-    console.log("token used in ", arguments.callee.name, ": ", replytoken)
-    return client.replyMessage(replytoken,
-        {
-            "type": "flex",
-            "altText": "this is a flex message",
-            "contents": flex_data
+async function getStorageFilesWithIndex(belongTo, idx) {
+    var [files] = await bucket.getFiles() //{prefix: `${userId}/`}
+    var files_correct = []
+    for (let i = 0; i < files.length; i++) {
+        f = files[i]
+        // console.log("get Files: ", f)
+        var correct = f.metadata.name.startsWith(`${belongTo.userId}/`)
+        if (correct) {
+            files_correct.push(f)
         }
-    );
-}
-
-function pushMsg(userId, textPrompt) {
-    return client.pushMessage(userId,
-        {
-            "type": "text",
-            "text": textPrompt
-        }
-    );
-}
-
-
-function replyTextMsg(replytoken, textfrom) {
-    return client.replyMessage(replytoken,
-        {
-            type: "text",
-            text: textfrom
-        }
-    );
-}
-
-confBackendData = [
-    [
-        "Set this voice msg as alarm?",
-        {
-            "type": "postback",
-            "label": "Yes",
-            "data": "resetVoice=yes"
-        },
-        {
-            "type": "postback",
-            "label": "No",
-            "data": "resetVoice=no"
-        }
-    ],
-    []
-]
-
-function replyConfirmTemplate(replytoken, backendData) {
-    promptMsg = backendData[0]
-    yesAction = backendData[1]
-    noAction = backendData[2]
-    return client.replyMessage(replytoken,
-        {
-            "type": "template",
-            "altText": "confirm template",
-            "template": {
-                "type": "confirm",
-                "text": promptMsg,
-                "actions": [
-                    yesAction,
-                    noAction
-                ]
-            }
-        }
-    );
-}
-
-
-function replyAudioMsg(replytoken, textfrom, audio_url, audio_duration) {
-    return client.replyMessage(replytoken,
-        [
-            {
-                type: "text",
-                text: textfrom
-            },
-            {
-                type: "audio",
-                originalContentUrl: audio_url,
-                duration: audio_duration
-            }
-        ]
-    );
+    }
+    // var filename = files_correct[idx].metadata.name
+    // var duration = files_correct[idx].metadata.metadata.duration
+    var file_metadata = files_correct[idx].metadata
+    return file_metadata
 }
 
 /////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
 
-async function getLatestAudioMsgData(request) {
-    var [files] = await bucket.getFiles();
-    var filename = files[files.length - 1].metadata.name
-    var url = getPubUrl(request, filename)
-    return [filename, url]
-}
-
-async function uploadStreamFile(stream, filename, customMetadata) {
-    var file = bucket.file(filename);
+async function uploadStreamFile(stream, filepathname, customMetadata) {
+    var file = bucket.file(filepathname);
     var writeStream = file.createWriteStream({
         contentType: 'auto',
         metadata: {
             metadata: customMetadata
         }
     });
-
     // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
     await new Promise((resolve, reject) => {
-        console.log(`uploading ${filename}...`);
+        // console.log(`uploading ${filepathname}...`);
         stream.pipe(writeStream)
             .on('error', reject)
             .on('finish', resolve);
     });
-
-    console.log(`done uploading ${filename}.`);
+    let filepath = filepathname.substring(0, filepathname.lastIndexOf('/'))
+    let filename = filepathname.substring(filepathname.lastIndexOf('/') + 1, filepathname.length)
+    // console.log(`done uploading ${filename} to ./${filepath}/.`);
 }
 
-async function uploadAudioMsg(msgId, filename, duration) {
-    var stream = await client.getMessageContent(msgId);
-
-    var file = bucket.file(filename);
-    var writeStream = file.createWriteStream({
-        metadata: {
-            contentType: "audio/mp4",
-            metadata: { duration }
+async function uploadAlarmToDatebase(belongTo, filepathname) {
+    /**
+     * @param {DbUser} belongTo
+     * @param {alarm_metadata} object that stores metadata
+     */
+    // log alarm data into database
+    const user = belongTo.db
+    const metadata = (await getAudioMetadata(filepathname))[0] // datetime,duration,name,timer,url,user
+    const idx = await getDocLatestIdx(belongTo, 'alarms', true, true)
+    user.collection("alarms").doc(`${idx}`).set(
+        {
+            ...metadata,
+            url: await getAudioURL(filepathname)
         },
-    });
-
-    // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
-    await new Promise((resolve, reject) => {
-        console.log(`uploading ${filename}...`);
-        stream.pipe(writeStream)
-            .on('error', reject)
-            .on('finish', resolve);
-    });
-
-    console.log(`done uploading ${filename}.`);
-
-    var url = await getAudioMsgUrl(filename);
-
-    return url;
-
+        { merge: true })
 }
 
-async function getAudioMsgUrl(filename) {
-
-    // const urlOptions = {
-    //     version: "v4",
-    //     action: "read",
-    //     expires: Date.now() + 1000 * 60 * 10, // 10 minutes
-    // }
-    // var url = (await bucket.file(pathname_dest)
-    //     .getSignedUrl(urlOptions))[0]
-
-    var [files] = await bucket.getFiles();
-    // for (let i=0; i<media_token.length; i++) {
-    //     var temp = media_token[i];
-    //     console.log(temp)
-    // }
-    var url = files[files.length - 1].metadata.mediaLink // get the last one in storage, aka the most recent one
-
-    // console.log("url: " + url)
-
-    return url;
+async function getAudioMetadata(filepathname) {
+    // md - metadata
+    var [md_outer] = await bucket.file(filepathname).getMetadata() // only select 0th ele
+    var contentType = md_outer.contentType
+    var md_inner = md_outer.metadata
+    // console.log(`\n\ngetting audio msg metadata (${filepathname}) in Storage...\n`)
+    // console.log(printf("originally, content type: %s, metadata_inner: %s\n", contentType, JSON.stringify(md_inner)))
+    return [md_inner, contentType]
 }
 
-function getPubUrl(request, filename) {
-    var protocol = request.protocol;
-    var host = request.get('host');
-    var url = `${protocol}://${host}/${project}/${region}/publicizeLocalFile?file=${encodeURIComponent(filename)}`
-    console.log(filename, ": ", url)
-    return url
-}
+async function setAudioMetadata(filepathname, alarmTime, alarmId) {
+    // console.log(`\n\nupdating audio msg metadata (${filepathname}) in Storage...`)
+    var data = await getAudioMetadata(filepathname)
+    var md_inner = data[0]
 
-async function findTargetedAudioMsg(msgId) {
-    var getFilesResponse = await bucket.getFiles(); // GetFilesResponse = [File[], {}, Metadata];
-    var files = getFilesResponse[0];
-    var files_size = getFilesResponse[0].length;
-    var files_unknown = getFilesResponse[1];
-    var files_metadata = getFilesResponse[2];
-
-    console.log(`files_size: ${files_size}, files_unknown: ${files_unknown}, files_metadata: ${files_metadata}`)
-
-    files.forEach(async file => {
-        if (file.name === `audio_${msgId}.m4a`) {
-            var url = await getAudioMsgUrl(msgId);
-            return url;
+    for (k in md_inner) {
+        if (k == "alarmTime") {
+            md_inner[k] = alarmTime
+        } else if (k == "alarmId") {
+            md_inner[k] = alarmId
         }
-    })
-    return null;
+    }
+    update = {
+        contentType: data[2],
+        metadata: md_inner
+    }
+    // console.log("updated data: ", JSON.stringify(update))
+    // console.log(printf(`finished updating ${filepathname}...`))
+    await bucket.file(filepathname).setMetadata(update)
 }
 
-/////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
+async function getAudioURL(filepathname, locally = true) {
+    let filename = filepathname.substring(filepathname.lastIndexOf('/') + 1, filepathname.length)
+    if (locally) {
+        var url = `https://${host}/linemsgapi-v2/asia-east1/publicizeLocalFile?file=${filepathname}`
+        console.log(filename, ", local url", url)
+        // var [files] = await bucket.getFiles();
+        // var url = files[files.length - 1].metadata.mediaLink // get the latest1
+    } else {
+        const urlOptions = {
+            version: "v4",
+            action: "read",
+            expires: Date.now() + 1000 * 60 * 10, // 10 minutes
+        }
+        var url = (await bucket.file(filepathname).getSignedUrl(urlOptions))[0]
+        console.log(filename, ", online url", url)
 
+    }
+    return url;
+}

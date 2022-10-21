@@ -1,43 +1,39 @@
 {
     "reply.chosenLang.en": "Switched to English",
     "reply.chosenLang.zh": "已切換到中文",
-    "reply.chosenLang.ja": "日本語に切り替えました。",
+    "reply.chosenLang.jp": "日本語に切り替えました。",
 
-    "reply.sentAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
-    "reply.sentAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
-    "reply.sentAudio.ja": "音声メッセージを送信したようです。 アラームとして設定しますか？",
+    "reply.receivedAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
+    "reply.receivedAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
+    "reply.receivedAudio.jp": "音声メッセージを送信したようです。 アラームとして設定しますか？",
 
-    "reply.youHaveSet.en": "You have set %s",
-    "reply.youHaveSet.zh": "你已經設定了 %s",
-    "reply.youHaveSet.ja": "%s を設定しました",
+    "reply.youHaveSet.jp": "%s を設定しました:\n%s",
 
-    "reply.alarmScheduled.en": "An alarm has been set.",
-    "reply.alarmScheduled.zh": "已設定鬧鐘。",
-    "reply.alarmScheduled.ja": "アラーム タスクがスケジュールされています。",
+    "reply.alarmScheduled.jp": "アラーム %s の設定が完了しました: \n%s\nアラームまで:\n日: %s 時間: %s 分: %s",
 
     "reply.okay.en": "Okay",
     "reply.okay.zh": "好的",
-    "reply.okay.ja": "わかった",
+    "reply.okay.jp": "わかった",
 
     "reply.chooseLang.en": "Which language do you prefer?",
     "reply.chooseLang.zh": "你更喜歡哪種語言？",
-    "reply.chooseLang.ja": "どの言語が好きですか?",
+    "reply.chooseLang.jp": "どの言語が好きですか?",
 
     "label.pickATime.en": "⏰ Pick a time",
     "label.pickATime.zh": "⏰ 選擇時間",
-    "label.pickATime.ja": "⏰ 時間を選ぶ",
+    "label.pickATime.jp": "⏰ 時間を選ぶ",
 
     "label.noThanks.en": "No thanks",
     "label.noThanks.zh": "不，謝謝",
-    "label.noThanks.ja": "結構です",
+    "label.noThanks.jp": "結構です",
 
     "areyouok.en": "Are you ok?",
     "areyouok.zh": "你OK嗎？",
-    "areyouok.ja": "大丈夫ですか？",
+    "areyouok.jp": "大丈夫ですか？",
 
     "reply.hellomsg.en": "Hello %s.",
     "reply.hellomsg.zh": "你好 %s 。",
-    "reply.hellomsg.ja": "こんにちは %s。",
+    "reply.hellomsg.jp": "こんにちは %s。",
 
     "flex.alarm.lb_1.en": "ALARM",
     "flex.alarm.lb_2.en": "AUDIO MESSAGE",
@@ -49,24 +45,69 @@
     "flex.alarm.lb_3.zh": "編輯",
     "flex.alarm.lb_4.zh": "查看所有鬧鐘",
 
-    "flex.alarm.lb_1.ja": "アラーム",
-    "flex.alarm.lb_2.ja": "音声メッセージ",
-    "flex.alarm.lb_3.ja": "編集する",
-    "flex.alarm.lb_4.ja": "アラームを表示",
+    "flex.alarm.lb_1.jp": "アラーム",
+    "flex.alarm.lb_2.jp": "音声メッセージ",
+    "flex.alarm.lb_3.jp": "編集する",
+    "flex.alarm.lb_4.jp": "アラームを表示",
+
+    "keyword.lang.en": "",
 
     "lang.en": "English",
     "lang.zh": "中文",
-    "lang.ja": "日本語",
+    "lang.jp": "日本語",
 
     "langs": [
         "en",
         "zh",
-        "ja"
+        "jp"
     ],
+
 
     "emoji.clock": "🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🕛🕧",
 
     "message.reply.en": "HelloText %s, %s",
-    "message.reply.zh": "你輸入了%2$s，所以你好呀%1$s"
+    "message.reply.zh": "你輸入了%2$s，所以你好呀%1$s",
+
+
+    
+    "reply.alarmScheduled.zh": "已完成設定鬧鐘%s: \n%s\n距離鬧鐘：\n天：%s 時：%s 分：%s",
+    "reply.noAlarmsAvailable.zh": "您還未設定任何鬧鐘喔",
+    "reply.showAlarmsAvailable.zh": "您所有的鬧鐘",
+    "reply.showAlarmsToDelete.zh": "請刪除鬧鐘",
+    "reply.showAlarmsRemaining.zh":"剩下的鬧鐘如下，若要停止刪除，請按退出",
+    "reply.youHaveDeleted.zh":"已刪除鬧鐘%s: \n%s",
+    "reply.chgAlarmsOrder.zh": "已更改排列順序",
+    "reply.exit.zh":"已退出",
+
+    "label.seeAlarms.zh": "觀看鬧鐘記錄",
+    "label.seeAlarmsOrder.zh": "更改排列順序",
+    "label.seeAllAlarms.zh": "觀看所有鬧鐘",
+    "label.exitButton.zh": "退出",
+
+    "warning.alarms.empty.zh":"您還未設定語音為鬧鐘！",
+    "warning.alarms.deleted.zh":"您過去的鬧鐘 %s 已被自動刪除",
+
+    
+
+
+    "reply.alarmScheduled.en": "You have set alarm %s: \n%s\nUntil alarm:\nday: %s hour: %s minutes: %s",
+    "reply.noAlarmsAvailable.en": "You haven't set any alarms yet",
+    "reply.showAlarmsAvailable.en": "Here's your alarms",
+    "reply.showAlarmsToDelete.en": "Here's your alarms to delete",
+    "reply.showAlarmsRemaining.en":"Here's your remaining alarms, to stop deletion press press Exit",
+    "reply.youHaveDeleted.en":"You have deleted alarm %s: \n%s",
+    "reply.chgAlarmsOrder.en": "Changed sorting order",
+    "reply.exit.en": "Exited",
+
+    "label.seeAlarms.en": "See alarms",
+    "label.seeAlarmsOrder.en": "Change sorting order",
+    "label.seeAllAlarms.en": "Glance all alarms",
+    "label.exitButton.en": "Escape",
+
+    "warning.alarms.empty.en":"You haven't set your alarms!",
+    "warning.alarms.deleted.en":"Your past alarm at %s has been deleted"
+    
+    
+    
 
 }
