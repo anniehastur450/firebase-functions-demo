@@ -111,6 +111,26 @@ async function uploadStreamFile(stream, filename, customMetadata) {
     console.log(`done uploading ${filename}.`);
 }
 
+/**
+ * customMetadata is (await getFileMetadata(filename)).metadata
+ * set: https://cloud.google.com/storage/docs/json_api/v1/objects/insert#request_properties_JSON
+ * get: https://cloud.google.com/storage/docs/json_api/v1/objects
+ * @param {string} filename
+ */
+async function getFileMetadata(filename) {
+    const file = bucket.file(filename);
+    const [metadata] = await file.getMetadata();
+
+    console.log(`metadata for ${filename}`, metadata);
+    return metadata;
+}
+
+function getPubUrl(filename) {
+    var url = `${protocol}://${host}/${project}/${region}/publicizeLocalFile?file=${encodeURIComponent(filename)}`;
+    console.log(`${filename}:`, url);
+    return url;
+}
+
 ////////////////// CODE START /////////////////////
 
 function unexpected(errorMessage) {
@@ -417,19 +437,12 @@ class BaseDbUserChatBot {
 
     replyText(...texts) {
         for (const text of texts) {
-            this.#replies.push(new TextMessage(text));
+            this.reply(new TextMessage(text));
         }
     }
 
-    replyAudio(...audio_objs) {
-        /**
-         * @params {audio_objs} array of {url: x, duration: y} objects
-         */
-        for (const obj of audio_objs) {
-            const url = obj['url'];
-            const duration = obj['duration'];
-            this.#replies.push(new AudioMessage(url, duration));
-        }
+    replyAudio(url, duration) {
+        this.reply(new AudioMessage(url, duration));
     }
 
     replyAlarmWatcher() {
@@ -519,18 +532,13 @@ class AlarmBase extends BaseDbUserChatBot {
     }
 
     async alarmOneAsync(alarmId) {
-        // var data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
-        // // const audio_filepathname = `${this.userId}/${audio_name}`
-        // // const audio_md = (await getAudioMetadata(audio_filepathname))[0]
-        // this.replyAudio({
-        //     url: data.url,
-        //     duration: data.duration
-        // })
-        this.replyText('TODO replyAudio')
-
         let doc = await this.db.doc(alarmId).get();
 
-        await this.#_replyFlexAlarms(doc)
+        let filename = doc.data().audio;
+        let { metadata } = await getFileMetadata(filename);
+        this.replyAudio(getPubUrl(filename), metadata.duration);
+
+        await this.#_replyFlexAlarms(doc);
     }
 
     async alarmAllAsync() {
@@ -686,11 +694,8 @@ class AlarmSetter extends AlarmBase {
 
     async #_save() {
         const alarmData = this.#generateAlarmData(this.subData.alarmData);  // for recalculate __friendly_time
-        await setAudioMetadata(alarmData.audio, alarmData.alarmTime, this.alarmId)
         return this.db.doc(this.subData.alarmId).set(alarmData);
     }
-
-
 
     setAudio(filename) {
         const __ = this.translator;
@@ -729,7 +734,6 @@ class LangSelector extends BaseDbUserChatBot {
     ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostbackAsync(data, params) {
-        const stat = this.topLevelData;
         const __ = this.translator;
 
         var prefix = 'lang-selector,';
@@ -749,10 +753,9 @@ class LangSelector extends BaseDbUserChatBot {
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
     #setLang(lang) {
-        const stat = this.topLevelData;
         const __ = this.translator;
 
-        stat.lang = lang;
+        this.topLevelData.lang = lang;
         __.lang = lang;
         this.replyText(__('reply.chosenLang'));
     }
@@ -760,7 +763,6 @@ class LangSelector extends BaseDbUserChatBot {
     changeLang() {
         // return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
 
-        const stat = this.topLevelData;
         const __ = this.translator;
 
         this.replyText(__('reply.chooseLang'));
@@ -993,147 +995,3 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
     return response.sendStatus(500);
 });
-
-/////////////////////////////// FIREBASE SEARCHING //////////////////////////////
-async function getDocLatestIdx(belongTo, collectionName, toLogNext = true, toString = true) {
-    /**
-     * @param {DbUser} belongTo
-     */
-    const user = belongTo.db
-    // get latest idx to log the next data into same collection directory
-    var idx = (await user.collection(collectionName).get()).size + (+toLogNext);
-    idx = toString ? printf("%02d", idx) : idx;
-    console.log('idx', idx);
-    return idx;
-}
-
-async function rearrangeDocNaming(belongTo, collectionName, sizeLoss, nameStartConvention = 1) {
-    const size = getDocLatestIdx(belongTo, collectionName, false, false)
-    for (let i = 0; i < size; i++) {
-        const oldName = nameStartConvention + sizeLoss + i
-        const newName = nameStartConvention + i
-        const oldSlot = printf("%02d", oldName)
-        const newSlot = printf("%02d", newName)
-        var doc = await belongTo.db.collection(collectionName).doc(`${oldSlot}`).get()
-        if (doc && doc.exists) {
-            var data = doc.data();
-            // saves the old data to new doc
-            await belongTo.db.collection(collectionName).doc(`${newSlot}`).set(data)
-            // deletes the old doc
-            belongTo.db.collection(collectionName).doc(`${oldSlot}`).delete()
-        }
-    }
-}
-
-function deleteDocWithIdx(belongTo, collectionName, idx, nameStartConvention = 1) {
-    slot = printf("%02d", nameStartConvention + idx)
-    belongTo.db.collection(collectionName).doc(`${slot}`).delete()
-    console.log(`${slot} deleted`)
-    belongTo.stat.alarm_count--;
-}
-
-async function getDocWithIndex(belongTo, collectionName, idx, nameStartConvention = 1) {
-    // to get first one, idx = 0
-    /**
-     * @param {DbUser} belongTo
-     * @param {collectionName} string collection name u want to find
-     * @param {idx} integer for indexing doc from collection
-     * @param {nameStartConvention} integer the naming convention of alarms starts with zero to ease transition to UI string
-     */
-    const user = belongTo.db
-    var size = (await user.collection(collectionName).get()).size
-    if (size == 0) return null
-    if (nameStartConvention + idx > size) {
-        console.warn(`The collection doesn't have enough files for you to use such a big index!\nChoose smaller.`)
-        return null
-    }
-    slot = printf("%02d", nameStartConvention + idx)
-    return await user.collection(collectionName).doc(`${slot}`).get()
-}
-
-async function getStorageFilesWithIndex(belongTo, idx) {
-    var [files] = await bucket.getFiles() //{prefix: `${userId}/`}
-    var files_correct = []
-    for (let i = 0; i < files.length; i++) {
-        f = files[i]
-        // console.log("get Files: ", f)
-        var correct = f.metadata.name.startsWith(`${belongTo.userId}/`)
-        if (correct) {
-            files_correct.push(f)
-        }
-    }
-    // var filename = files_correct[idx].metadata.name
-    // var duration = files_correct[idx].metadata.metadata.duration
-    var file_metadata = files_correct[idx].metadata
-    return file_metadata
-}
-
-/////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
-
-async function uploadAlarmToDatebase(belongTo, filepathname) {
-    /**
-     * @param {DbUser} belongTo
-     * @param {alarm_metadata} object that stores metadata
-     */
-    // log alarm data into database
-    const user = belongTo.db
-    const metadata = (await getAudioMetadata(filepathname))[0] // datetime,duration,name,timer,url,user
-    const idx = await getDocLatestIdx(belongTo, 'alarms', true, true)
-    user.collection("alarms").doc(`${idx}`).set(
-        {
-            ...metadata,
-            url: await getAudioURL(filepathname)
-        },
-        { merge: true })
-}
-
-async function getAudioMetadata(filepathname) {
-    // md - metadata
-    var [md_outer] = await bucket.file(filepathname).getMetadata() // only select 0th ele
-    var contentType = md_outer.contentType
-    var md_inner = md_outer.metadata
-    // console.log(`\n\ngetting audio msg metadata (${filepathname}) in Storage...\n`)
-    // console.log(printf("originally, content type: %s, metadata_inner: %s\n", contentType, JSON.stringify(md_inner)))
-    return [md_inner, contentType]
-}
-
-async function setAudioMetadata(filepathname, alarmTime, alarmId) {
-    // console.log(`\n\nupdating audio msg metadata (${filepathname}) in Storage...`)
-    var data = await getAudioMetadata(filepathname)
-    var md_inner = data[0]
-
-    for (k in md_inner) {
-        if (k == "alarmTime") {
-            md_inner[k] = alarmTime
-        } else if (k == "alarmId") {
-            md_inner[k] = alarmId
-        }
-    }
-    update = {
-        contentType: data[2],
-        metadata: md_inner
-    }
-    // console.log("updated data: ", JSON.stringify(update))
-    // console.log(printf(`finished updating ${filepathname}...`))
-    await bucket.file(filepathname).setMetadata(update)
-}
-
-async function getAudioURL(filepathname, locally = true) {
-    let filename = filepathname.substring(filepathname.lastIndexOf('/') + 1, filepathname.length)
-    if (locally) {
-        var url = `https://${host}/linemsgapi-v2/asia-east1/publicizeLocalFile?file=${filepathname}`
-        console.log(filename, ", local url", url)
-        // var [files] = await bucket.getFiles();
-        // var url = files[files.length - 1].metadata.mediaLink // get the latest1
-    } else {
-        const urlOptions = {
-            version: "v4",
-            action: "read",
-            expires: Date.now() + 1000 * 60 * 10, // 10 minutes
-        }
-        var url = (await bucket.file(filepathname).getSignedUrl(urlOptions))[0]
-        console.log(filename, ", online url", url)
-
-    }
-    return url;
-}
