@@ -135,16 +135,21 @@ function applyDefault(sourceData, defaultData) {
     return sourceData;
 }
 
+////////////////// CLASSES FOR DATA IN FIRESTORE /////////////////////
+
 /* user doc data object structure (to store lang, states, etc) */
-function defaultUserData() {
-    return {
-        lang: null,   // or 'en', 'zh', null mean unset
-        alarmId: 0,   // monotonic counter for alarm id
-        timezone: 8,  // only support utc+8 for now, user selected time will minus this
-        tags: {},     // store quick reply its corresponding tag
-        holder: null, // or 'alarm-setter', state holder
-        holderData: {},  // (holder specific data)
-    };
+
+class TopLevelData {
+    static default() {
+        return {
+            lang: null,   // or 'en', 'zh', null mean unset
+            alarmId: 0,   // monotonic counter for alarm id
+            timezone: 8,  // only support utc+8 for now, user selected time will minus this
+            tags: {},     // store quick reply its corresponding tag
+            holder: null, // or 'alarm-setter', state holder
+            holderData: {},  // (holder specific data)
+        };
+    }
 }
 
 /*
@@ -715,9 +720,11 @@ class AlarmSetter extends BaseDbUserChatBot {
             state: 'receivedAudio'
         };
         this.replyText(__('reply.receivedAudio'));
-        this.addQuickReply(new DatetimePicker('alarm-setter', __('label.pickATime')));
-        this.addQuickReplyText(__('label.noThanks'));
-        this.addQuickReply(new PostbackAction('alarm-watcher', __('label.seeAlarms')));
+        this.addQuickReply(
+            new DatetimePicker('alarm-setter', __('label.pickATime')),
+            new PostbackAction('alarm-setter,noThanks', __('label.noThanks')),
+            new PostbackAction('alarm-watcher', __('label.seeAlarms'))
+        );
         // return this.belongTo.setHolder('alarm-watcher');
     }
 
@@ -942,8 +949,8 @@ class DbUser {
     async init() {  // called by startProcessing()
         /* the data in db if exists else empty obj */
         var userData = (await this.db.get()).data() ?? {};
-        /** @type {ReturnType<typeof defaultUserData>} */
-        this.storedData = applyDefault(userData, defaultUserData());
+        /** @type {ReturnType<typeof TopLevelData.default>} */
+        this.storedData = applyDefault(userData, TopLevelData.default());
     }
 
     async startProcessing() {
