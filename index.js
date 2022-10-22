@@ -90,6 +90,27 @@ class DateUtility {
     }
 }
 
+/* storage related */
+async function uploadStreamFile(stream, filename, customMetadata) {
+    var file = bucket.file(filename);
+    var writeStream = file.createWriteStream({
+        contentType: 'auto',
+        metadata: {
+            metadata: customMetadata
+        }
+    });
+
+    // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
+    await new Promise((resolve, reject) => {
+        console.log(`uploading ${filename}...`);
+        stream.pipe(writeStream)
+            .on('error', reject)
+            .on('finish', resolve);
+    });
+
+    console.log(`done uploading ${filename}.`);
+}
+
 ////////////////// CODE START /////////////////////
 
 function unexpected(errorMessage) {
@@ -1089,26 +1110,6 @@ async function getStorageFilesWithIndex(belongTo, idx) {
 }
 
 /////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
-
-async function uploadStreamFile(stream, filename, customMetadata) {
-    var file = bucket.file(filename);
-    var writeStream = file.createWriteStream({
-        contentType: 'auto',
-        metadata: {
-            metadata: customMetadata
-        }
-    });
-
-    // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
-    await new Promise((resolve, reject) => {
-        console.log(`uploading ${filename}...`);
-        stream.pipe(writeStream)
-            .on('error', reject)
-            .on('finish', resolve);
-    });
-
-    console.log(`done uploading ${filename}.`);
-}
 
 async function uploadAlarmToDatebase(belongTo, filepathname) {
     /**
