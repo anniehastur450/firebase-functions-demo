@@ -41,31 +41,6 @@ const flexs = require('./flex-message');
 var protocol = null;  // should be https
 var host = null;      // the domain name
 
-// quickReply has 1 extra attribute => "quickReply"
-// https://developers.line.biz/en/docs/messaging-api/using-quick-reply/#set-quick-reply-buttons
-
-exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequest((request, response) => {
-    console.log('request.query', request.query)
-    console.log('req host', request.get('host'))
-    console.log('req origin', request.get('origin'))
-
-    var filename = request.query.file;
-    if (!filename) {
-        response.sendStatus(404)
-        return
-    }
-    response.setHeader('Content-Type', 'audio/mp4');
-
-    (async () => {
-        var file = bucket.file(filename)
-        var [buffer] = await file.download()
-        response.send(buffer)
-    })().catch(err => {
-        console.error(err);
-        response.sendStatus(404)
-    })
-})
-
 /* datetime related */
 // see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse
 class DateUtility {
@@ -995,3 +970,23 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
     return response.sendStatus(500);
 });
+
+exports.publicizeLocalFile = functions.region(region).runWith(spec).https.onRequest((request, response) => {
+    console.log(`publicizeLocalFile: ${request.query}`);
+
+    var filename = request.query.file;
+    if (!filename) {
+        response.sendStatus(404)
+        return
+    }
+    response.setHeader('Content-Type', 'audio/mp4');
+
+    (async () => {
+        var file = bucket.file(filename)
+        var [buffer] = await file.download()
+        response.send(buffer)
+    })().catch(err => {
+        console.error(err);
+        response.sendStatus(404)
+    })
+})
