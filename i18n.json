@@ -80,7 +80,7 @@
     "reply.exit.zh":"已退出",
 
     "label.seeAlarms.zh": "觀看鬧鐘記錄",
-    "label.seeAlarmsOrder.zh": "更改排列順序",
+    "label.reverseOrder.zh": "更改排列順序",
     "label.seeAllAlarms.zh": "觀看所有鬧鐘",
     "label.exitButton.zh": "退出",
 
@@ -100,7 +100,7 @@
     "reply.exit.en": "Exited",
 
     "label.seeAlarms.en": "See alarms",
-    "label.seeAlarmsOrder.en": "Change sorting order",
+    "label.reverseOrder.en": "Change sorting order",
     "label.seeAllAlarms.en": "Glance all alarms",
     "label.exitButton.en": "Escape",
 

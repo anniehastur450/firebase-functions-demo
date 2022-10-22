@@ -559,106 +559,75 @@ class AlarmBase extends BaseDbUserChatBot {
     }
 
     acquireAlarmId() {
-        return `alarm_${this.topLevelData.alarmCounter++}`
-    }
-}
-
-class AlarmReplier extends AlarmBase {
-
-    static NAME = register('alarm-replier', this);
-
-    async reactPostbackAsync(data, params) {
-        const stat = this.topLevelData;
-        console.log("alarm-replier, pbData: ", data)
-        const alarmId = data.split(',')[1]
-        if (data.includes('alarm_id,')) {
-            var data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
-            // const audio_filepathname = `${this.userId}/${audio_name}`
-            // const audio_md = (await getAudioMetadata(audio_filepathname))[0]
-            this.replyAudio({
-                url: data.url,
-                duration: data.duration
-            })
-            await this.#_replyFlexAlarms(alarmId)
-        } else if (data == 'see-all') {
-            await this.#_replyAllFlexAlarms()
-        }
-
-        return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync();
+        return `alarm_${this.topLevelData.alarmCounter++}`;
     }
 
-    async #_replyAllFlexAlarms() {
-        var alarmIds = []
-        const size = await getDocLatestIdx(this.belongTo, 'alarms', false, false)
-        for (let i = 0; i < size; i++) {
-            var idxDigit = i + 1
-            console.log('inner:　', i, "idxDigit: ", idxDigit)
-            const data = (await this.db.doc(printf("%02d", idxDigit)).get()).data()
-            if (data == undefined) continue
-            alarmIds.push(idxDigit)
-        }
-        this.#_replyFlexAlarms(...alarmIds)
+    async alarmOneAsync(alarmId) {
+        // var data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
+        // // const audio_filepathname = `${this.userId}/${audio_name}`
+        // // const audio_md = (await getAudioMetadata(audio_filepathname))[0]
+        // this.replyAudio({
+        //     url: data.url,
+        //     duration: data.duration
+        // })
+        this.replyText('TODO replyAudio')
+
+        let doc = await this.db.doc(alarmId).get();
+
+        await this.#_replyFlexAlarms(doc)
     }
-    async #_replyFlexAlarms(...alarmIds) {  /* you should only call this method after #_save */
+
+    async alarmAllAsync() {
+        const query = await this.db.get();
+        this.#_replyFlexAlarms(...query.docs);
+    }
+
+    async #_replyFlexAlarms(...docs) {
         const __ = this.translator;
+
         var arr = []
-        for (const alarmId of alarmIds) {
-            const alarmIdString = printf("%02d", alarmId)
-            console.log("replyFlexAlarms doc idx: ", alarmId, ",idx string: ", alarmIdString)
-            var data = (await this.db.doc(alarmIdString).get()).data();
-            console.log(data)
-            let flex = flexs.alarmScheduled(__, data.alarmTime, this.topLevelData.timezone, alarmId);
-            console.log("before pushing, flex: ", flex)
+        for (const doc of docs) {
+            let alarmId = doc.id;
+            let alarmData = doc.data();
+
+            let flex = flexs.alarmScheduled(__, alarmData.alarmTime, this.topLevelData.timezone, alarmId);
             arr.push(flex)
-            console.log("after pushing, arr: ", arr)
         }
         this.reply(new FlexMessage(new ImageCarousel(arr).toLINEObject()));
-        // this.replyUntilAlarm(alarmId);
     }
 
 }
 
 class AlarmWatcher extends AlarmBase {
+
     static NAME = register('alarm-watcher', this);
 
     #changeAlarmOrder() {
-        this.topLevelData.watchOrder == '+' ? this.topLevelData.watchOrder = '-' : this.topLevelData.watchOrder = '+';
+        this.subData.watchOrder = this.subData.watchOrder != '-' ? '-' : '+';
     }
 
-    async reactPostbackAsync(data, params = '') {
-        const stat = this.topLevelData;
+    ////////////////// CHATBOT REACTS /////////////////////
+
+    async reactPostbackAsync(data, params) {
         const __ = this.translator;
 
-        // BUG, SO THIS CAN POST YOUR FLEX MESSAGE FOR THE 1ST TIME, BUT AFTER REEDIT TIMER, THE POSTBACK WILL BE UNDEFINED, I DUNNO WHY, AND IT CANNOT GO HERE AGAIN
-        /* empty for now */
-        let prefix = 'flex,edit=';
-        if (data != null) {
-            if (data.startsWith(prefix)) {
-                if (!params?.datetime) {
-                    console.warn('unexpected no datetime');
-                } else {
-                    let alarmId = data.slice(prefix.length);
-                    return this.belongTo.setHolder('alarm-setter').loadEditAbort(alarmId, params.datetime);
-                }
-            }
+        let prefix;
+        if (data == 'alarm-watcher,reverseOrder') {
+            this.#changeAlarmOrder();
+            this.replyText(__('reply.chgAlarmsOrder'));
+            // keep looping for user to play "sorting" feature, no abort options
+            return this.generateQuickRepliesAsync();
+        } else if (data == 'alarm-watcher,seeAllAlarms') {
+            await this.alarmAllAsync();
+            return this.generateQuickRepliesAsync();
 
-            /* --------------- CHATBOT SELF OWNED ------------------ */
-            if (data == 'sort-changer') {
-                this.#changeAlarmOrder();
-                this.replyText(__('reply.chgAlarmsOrder'));
-                // keep looping for user to play "sorting" feature, no abort options
-            }
-            else if (data.includes('alarm_id,')) {
-                console.log("alarm-replier")
-                return this.belongTo.setHolder('alarm-replier').reactPostbackAsync(data);
-            }
-            else if (data.includes('see-all')) {
-                return this.belongTo.setHolder('alarm-replier').reactPostbackAsync(data);
-            }
+        } else if (data.startsWith(prefix = 'alarm-watcher,alarm=')) {
+            let alarmId = data.slice(prefix.length);
+            await this.alarmOneAsync(alarmId);
+            return this.generateQuickRepliesAsync();
         }
 
-        await this.generateQuickRepliesAsync();
-        return this.replyText('...arguments');
+        return super.reactPostbackAsync(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
@@ -669,7 +638,7 @@ class AlarmWatcher extends AlarmBase {
         const query = await this.db.get();
 
         const alarms = [];  // list of alarmData
-        for (let doc of query.docs) {
+        for (const doc of query.docs) {
             alarms.push({
                 alarmId: doc.id,
                 alarmData: doc.data(),
@@ -688,7 +657,7 @@ class AlarmWatcher extends AlarmBase {
             let label = `⏰ ${idxDigit}, ${abbr}`
             this.addQuickReply(new PostbackAction(`alarm-watcher,alarm=${alarmId}`, label));
         }
-        this.addQuickReply(new PostbackAction('alarm-watcher,seeAlarmsOrder', __('label.seeAlarmsOrder')));
+        this.addQuickReply(new PostbackAction('alarm-watcher,reverseOrder', __('label.reverseOrder')));
         this.addQuickReply(new PostbackAction('alarm-watcher,seeAllAlarms', __('label.seeAllAlarms')));
     }
 
