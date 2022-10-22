@@ -544,10 +544,10 @@ class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logi
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             } else {
-                return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync(data, params)
+                let alarmId = data.slice(prefix.length);
+                return this.belongTo.setHolder('alarm-setter').loadEditWatch(alarmId, params.datetime);
             }
         }
-
     }
 
 }
@@ -754,15 +754,13 @@ class AlarmSetter extends AlarmBase {
         );
     }
 
-    // BUG, FLEX MESSAGE BUG IS PROBABLY HERE AND #saveAndReply
-    async loadEditAbort(alarmId, datetime) {  // load alarm, edit and save, and abort
-        this.alarmId = alarmId;
-        console.log("loadEditAbort alarm: ", alarmId)
-        this.alarmData = (await this.db.doc(printf("%02d", alarmId)).get()).data();
+    async loadEditWatch(alarmId, datetime) {  // load alarm, edit and save, and abort
+        this.subData.alarmId = alarmId;
+        this.subData.alarmData = (await this.db.doc(alarmId).get()).data();
 
-        this.alarmData.alarmTime = this.belongTo.parseDatetime(datetime);
+        this.subData.alarmData.alarmTime = this.belongTo.parseDatetime(datetime);
         await this.#saveAndReply();
-        return this.abort();
+        return this.belongTo.setHolder('alarm-watcher').generateQuickRepliesAsync();
     }
 
 }
@@ -823,7 +821,7 @@ class LangSelector extends BaseDbUserChatBot {
 // or https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#typedef-callback-and-param
 /**
  * Possible chatbots.
- * @typedef {(DefaultChatBot & AlarmSetter & AlarmWatcher & AlarmReplier & LangSelector)} ChatBotLike
+ * @typedef {(DefaultChatBot & AlarmSetter & AlarmWatcher & LangSelector)} ChatBotLike
  */
 
 class DbUser {
