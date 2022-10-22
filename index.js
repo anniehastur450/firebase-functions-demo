@@ -164,11 +164,20 @@ class TopLevelData {
     static default() {
         return {
             lang: null,   // or 'en', 'zh', null mean unset
-            alarmId: 0,   // monotonic counter for alarm id
+            alarmCounter: 0,   // monotonic counter for alarm id
             timezone: 8,  // only support utc+8 for now, user selected time will minus this
-            tags: {},     // store quick reply its corresponding tag
             holder: null, // or 'alarm-setter', state holder
-            holderData: {},  // (holder specific data)
+            /*
+            subData look like this
+            {
+                'alarm-setter': {...},
+                'alarm-watcher': {...},
+                'lang-selector': {...},
+                ... etc
+            }
+
+            */
+            subData: {},  // (holder specific data)
         };
     }
 }
@@ -344,29 +353,38 @@ class BaseDbUserChatBot {
         return this.constructor.NAME;
     }
 
-    get stat() {
-        return this.belongTo.storedData;
+    get topLevelData() {
+        return this.belongTo.dbData;
+    }
+
+    get subData() {
+        let ret = this.topLevelData.subData[this.name];
+        return ret ? ret : (this.topLevelData.subData[this.name] = {});
+    }
+
+    set subData(val) {
+        this.topLevelData.subData[this.name] = val;
     }
 
     get translator() {
         return this.belongTo.translator;
     }
 
-    get replies() {
+    get #replies() {
         return this.belongTo.replies;
     }
 
-    get quickReplies() {
+    get #quickReplies() {
         return this.belongTo.quickReplies;
     }
 
     get audio_filepathname() {
         // olny place where filepathname created
-        return this.stat.holderData.audio;
+        return this.topLevelData.holderData.audio;
     }
 
     get watchOrder() {
-        return this.stat.watchOrder
+        return this.topLevelData.watchOrder
     }
 
     get db() {
@@ -381,7 +399,7 @@ class BaseDbUserChatBot {
     //     return (await this.db.doc(alarmIdString).get()).data();
     // }
     get alarmIdString() {
-        return printf("%02d", this.stat.alarmId);
+        return printf("%02d", this.topLevelData.alarmId);
     }
     async alarmUrl() {
         console.log("super class super async getters")
@@ -424,14 +442,15 @@ class BaseDbUserChatBot {
         this.addQuickReply(new PostbackAction('see-all', __('label.seeAllAlarms')));
     }
 
-    async replyUntilAlarm(alarmId) {
-        const __ = this.translator;
-        const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
-        const timerString = data.timerString.substring(5, 16).replace('T', '  ')
-        const untilAlarm = Number.parseInt(Date.now()) - Number.parseInt(timerString)
-        console.log(Date.now(), timerString, Number.parseInt(Date.now()), Number.parseInt(timerString))
-        const d = new Date(untilAlarm)
-        this.replyText(__('reply.alarmScheduled', this.alarmId, timerString, d.getUTCDay() - 4, d.getUTCHours(), d.getUTCMinutes())); // reply.alarmScheduled //NOT SURE WHY IT'S MINUS 4
+    replyUntilAlarm(alarmId) {
+        // const __ = this.translator;
+        // const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
+        // const timerString = data.timerString.substring(5, 16).replace('T', '  ')
+        // const untilAlarm = Number.parseInt(Date.now()) - Number.parseInt(timerString)
+        // console.log(Date.now(), timerString, Number.parseInt(Date.now()), Number.parseInt(timerString))
+        // const d = new Date(untilAlarm)
+        // this.replyText(__('reply.alarmScheduled', this.alarmId, timerString, d.getUTCDay() - 4, d.getUTCHours(), d.getUTCMinutes())); // reply.alarmScheduled //NOT SURE WHY IT'S MINUS 4
+        this.replyText(`TODO replyUntilAlarm(${alarmId})`);
     }
     ////////////////// CHATBOT TRANSFORMER /////////////////////
 
@@ -451,7 +470,7 @@ class BaseDbUserChatBot {
             if (action.toLINEObject) {
                 action = action.toLINEObject();
             }
-            this.quickReplies.push({
+            this.#quickReplies.push({
                 type: 'action',
                 action: action
             })
@@ -467,12 +486,12 @@ class BaseDbUserChatBot {
     }
 
     reply(...messages) {
-        this.replies.push(...messages);
+        this.#replies.push(...messages);
     }
 
     replyText(...texts) {
         for (const text of texts) {
-            this.replies.push(new TextMessage(text));
+            this.#replies.push(new TextMessage(text));
         }
     }
 
@@ -483,7 +502,7 @@ class BaseDbUserChatBot {
         for (const obj of audio_objs) {
             const url = obj['url'];
             const duration = obj['duration'];
-            this.replies.push(new AudioMessage(url, duration));
+            this.#replies.push(new AudioMessage(url, duration));
         }
     }
 
@@ -519,7 +538,6 @@ class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logi
     ////////////////// CHATBOT REACTS /////////////////////
 
     async reactTextAsync(text, tag) { /* user text, and corresponding tag */
-        const stat = this.stat;
         const __ = this.translator;
 
         if (text == 'lang') {
@@ -532,15 +550,14 @@ class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logi
     }
 
     async reactAudioAsync(filename) {
-        const stat = this.stat;
         const __ = this.translator;
 
         return this.belongTo.setHolder('alarm-setter').setAudio(filename);
     }
 
     async reactPostbackAsync(data, params) {
-        const stat = this.stat;
         const __ = this.translator;
+
         let prefix = 'flex,edit=';
         if (data.startsWith(prefix)) {
             if (!params?.datetime) {
@@ -554,14 +571,18 @@ class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logi
 
 }
 
-class AlarmBase extends BaseDbUserChatBot {}
+class AlarmBase extends BaseDbUserChatBot {
+    acquireAlarmId() {
+        return `alarm_${this.topLevelData.alarmCounter++}`
+    }
+}
 
 class AlarmReplier extends AlarmBase {
 
     static NAME = register('alarm-replier', this);
 
     async reactPostbackAsync(data, params) {
-        const stat = this.stat;
+        const stat = this.topLevelData;
         console.log("alarm-replier, pbData: ", data)
         const alarmId = data.split(',')[1]
         if (data.includes('alarm_id,')) {
@@ -600,7 +621,7 @@ class AlarmReplier extends AlarmBase {
             console.log("replyFlexAlarms doc idx: ", alarmId, ",idx string: ", alarmIdString)
             var data = (await this.db.doc(alarmIdString).get()).data();
             console.log(data)
-            let flex = flexs.alarmScheduled(__, data.alarmTime, this.stat.timezone, alarmId);
+            let flex = flexs.alarmScheduled(__, data.alarmTime, this.topLevelData.timezone, alarmId);
             console.log("before pushing, flex: ", flex)
             arr.push(flex)
             console.log("after pushing, arr: ", arr)
@@ -615,11 +636,11 @@ class AlarmWatcher extends AlarmBase {
     static NAME = register('alarm-watcher', this);
 
     #changeAlarmOrder() {
-        this.stat.watchOrder == '+' ? this.stat.watchOrder = '-' : this.stat.watchOrder = '+';
+        this.topLevelData.watchOrder == '+' ? this.topLevelData.watchOrder = '-' : this.topLevelData.watchOrder = '+';
     }
 
     async reactPostbackAsync(data, params = '') {
-        const stat = this.stat;
+        const stat = this.topLevelData;
         const __ = this.translator;
 
         // BUG, SO THIS CAN POST YOUR FLEX MESSAGE FOR THE 1ST TIME, BUT AFTER REEDIT TIMER, THE POSTBACK WILL BE UNDEFINED, I DUNNO WHY, AND IT CANNOT GO HERE AGAIN
@@ -653,6 +674,13 @@ class AlarmWatcher extends AlarmBase {
         await this.generateAlarmWatcherQuickReplies();
         return this.replyText('...arguments');
     }
+
+    /* --------------- CHATBOT SELF OWNED ------------------ */
+
+    async generateQuickRepliesAsync() {
+        this.addQuickReplyText('TODO watcher')
+    }
+
 }
 
 class AlarmSetter extends AlarmBase {
@@ -662,28 +690,25 @@ class AlarmSetter extends AlarmBase {
     ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostbackAsync(data, params) {
-        const stat = this.stat;
-        this.pbData = data;
         const __ = this.translator;
-
 
         if (data == 'alarm-setter') {
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             } else {
-                this.alarmId = await getDocLatestIdx(this.belongTo, 'alarms', true, true);  // acquire a new alarm id    `${stat.alarmId++}`
-                stat.alarmId++;
-                stat.watchOrder = '+'
+                this.subData.alarmTime = this.belongTo.parseDatetime(params.datetime);
+                this.subData.alarmId = this.acquireAlarmId();  // acquire a new alarm id
+                this.subData.alarmData = this.#generateAlarmData(this.subData);  // TODO: to be removed
 
-                stat.holderData.alarmTime = this.belongTo.parseDatetime(params.datetime);
-                stat.holderData.duration = (await getAudioMetadata(this.audio_filepathname))[0].duration
-                stat.holderData.url = await getAudioURL(this.audio_filepathname)
-                this.alarmData = stat.holderData;
+                // stat.watchOrder = '+'  // TODO: to be removed
+
+                // stat.holderData.duration = (await getAudioMetadata(this.audio_filepathname))[0].duration  // TODO: to be removed
+                // stat.holderData.url = await getAudioURL(this.audio_filepathname)  // TODO: to be removed
+                // this.alarmData = stat.holderData;  // TODO: to be removed
 
                 await this.#saveAndReply();
             }
-            // return this.abort();
-            // UNUSED CODE
+            return this.belongTo.setHolder('alarm-watcher').generateQuickRepliesAsync();
         } else if (data == 'alarm-setter,noThanks') {
             this.replyText(__('reply.okay'));
             return this.abort();
@@ -701,42 +726,43 @@ class AlarmSetter extends AlarmBase {
         version = (version || 0) + 1;
         return {
             audio,
-            duration,
-            url,
+            // duration,
+            // url,
             alarmTime,
             version,
-            timerString: this.belongTo.toDatetimeString(alarmTime)
+            __friendly_time: this.belongTo.toDatetimeString(alarmTime)
         };
     }
 
     async #saveAndReply() {
-        if (!this.alarmId || !this.alarmData) {
+        if (!this.subData.alarmId || !this.subData.alarmData) {
             unexpected('alarmId or alarmData is not set')
         }
-        const __ = this.translator;
-        await this.#_save();
-        await this.replyUntilAlarm(this.alarmId);
-        await this.generateAlarmWatcherQuickReplies();
-        this.belongTo.setHolder('alarm-watcher');
 
+        await this.#_save();
+        this.replyUntilAlarm(this.subData.alarmId);
+        // await this.generateAlarmWatcherQuickReplies(); // TODO: to be removed
+        // this.belongTo.setHolder('alarm-watcher'); // TODO: to be removed
     }
 
     async #_save() {
-        const alarmData = this.alarmData = this.#generateAlarmData(this.alarmData);  // for recalculate timerString
+        const alarmData = this.#generateAlarmData(this.subData.alarmData);  // for recalculate __friendly_time
         await setAudioMetadata(alarmData.audio, alarmData.alarmTime, this.alarmId)
-        return this.db.doc(this.alarmIdString).set(alarmData);
+        return this.db.doc(this.subData.alarmId).set(alarmData);
     }
 
 
 
     setAudio(filename) {
-        const stat = this.stat;
         const __ = this.translator;
 
-        stat.holderData = {
+        this.subData = {
             audio: filename,
             alarmTime: null,
-            state: 'userSentAudio'
+            state: 'userSentAudio',
+            /* db save related */
+            alarmId: null,
+            alarmData: null
         };
         this.replyText(__('reply.userSentAudio'));
         this.addQuickReply(
@@ -744,7 +770,6 @@ class AlarmSetter extends AlarmBase {
             new PostbackAction('alarm-setter,noThanks', __('label.noThanks')),
             new PostbackAction('alarm-setter,seeAlarms', __('label.seeAlarms'))
         );
-        // return this.belongTo.setHolder('alarm-watcher');
     }
 
     // BUG, FLEX MESSAGE BUG IS PROBABLY HERE AND #saveAndReply
@@ -767,7 +792,7 @@ class LangSelector extends BaseDbUserChatBot {
     ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostbackAsync(data, params) {
-        const stat = this.stat;
+        const stat = this.topLevelData;
         const __ = this.translator;
 
         var prefix = 'lang-selector,';
@@ -787,7 +812,7 @@ class LangSelector extends BaseDbUserChatBot {
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
     #setLang(lang) {
-        const stat = this.stat;
+        const stat = this.topLevelData;
         const __ = this.translator;
 
         stat.lang = lang;
@@ -798,7 +823,7 @@ class LangSelector extends BaseDbUserChatBot {
     changeLang() {
         // return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
 
-        const stat = this.stat;
+        const stat = this.topLevelData;
         const __ = this.translator;
 
         this.replyText(__('reply.chooseLang'));
@@ -841,7 +866,7 @@ class DbUser {
     #__;
     get translator() {
         if (!this.#__) {
-            var userLang = this.storedData.lang ?? 'en';
+            var userLang = this.dbData.lang ?? 'en';
             this.#__ = i18n.translate(userLang);
         }
         return this.#__;
@@ -852,7 +877,7 @@ class DbUser {
      */
     get chatbot() {
         /* return chatbot by holder, null is deafult chatbot */
-        return this.#getChatBot(this.storedData.holder ?? null);
+        return this.#getChatBot(this.dbData.holder ?? null);
     }
     #cachedBots = {};
     #getChatBot(name) {
@@ -869,12 +894,9 @@ class DbUser {
             console.error('is your program stuck?')
         }
 
-        const stat = this.storedData;
-
-        stat.holder = name;
+        this.dbData.holder = name;
         if (clear) {
-            stat.holderData = {};
-            stat.tags = {};
+            /* TODO */
         }
         return this.chatbot;  // this.chatbot becomes new holder
     }
@@ -886,14 +908,14 @@ class DbUser {
      */
     parseDatetime(datetime) {
         /* datetime format look like 2017-12-25T01:00 */
-        return DateUtility.parseDatetime(datetime, this.storedData.timezone);
+        return DateUtility.parseDatetime(datetime, this.dbData.timezone);
     }
     toDatetimeString(timestamp) {
-        return DateUtility.toDatetimeString(timestamp, this.storedData.timezone);
+        return DateUtility.toDatetimeString(timestamp, this.dbData.timezone);
     }
 
     async save() {
-        return await this.db.set(this.storedData);
+        return await this.db.set(this.dbData);
     }
 
     async replyMessage() {
@@ -920,10 +942,8 @@ class DbUser {
         const event = this.event;
 
         var userText = event.message.text;
-        var tag = null;
-        if (this.storedData.tags.hasOwnProperty(userText)) {
-            tag = this.storedData.tags[userText];
-        }
+        var tag = null;  /* TODO tag */
+
         await this.chatbot.reactTextAsync(userText, tag);
         return this.replyMessage();
     }
@@ -968,7 +988,7 @@ class DbUser {
         /* the data in db if exists else empty obj */
         var userData = (await this.db.get()).data() ?? {};
         /** @type {ReturnType<typeof TopLevelData.default>} */
-        this.storedData = applyDefault(userData, TopLevelData.default());
+        this.dbData = applyDefault(userData, TopLevelData.default());
     }
 
     async startProcessing() {
@@ -1017,7 +1037,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
 
             // await originalProcessing(event, request, response);
 
-            console.log('save storedData', userObj.storedData);
+            console.log('save storedData', userObj.dbData);
             await userObj.save();
 
             return response.status(200).send(request.method);
