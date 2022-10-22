@@ -378,61 +378,6 @@ class BaseDbUserChatBot {
         return this.belongTo.quickReplies;
     }
 
-    get audio_filepathname() {
-        // olny place where filepathname created
-        return this.topLevelData.holderData.audio;
-    }
-
-    get watchOrder() {
-        return this.topLevelData.watchOrder
-    }
-
-    get db() {
-        return this.belongTo.db.collection('alarms');
-    }
-    async DBAlarmData() {
-        // audio,duration,url, alarmTime, version, timerString
-        return (await this.db.doc(this.alarmIdString).get()).data();
-    }
-    // async DBAlarmData(alarmIdString) {
-    //     // audio,duration,url, alarmTime, version, timerString
-    //     return (await this.db.doc(alarmIdString).get()).data();
-    // }
-    get alarmIdString() {
-        return printf("%02d", this.topLevelData.alarmId);
-    }
-    async alarmUrl() {
-        console.log("super class super async getters")
-        return (await this.DBAlarmData()).url;
-    }
-    async alarmTime() {
-        console.log("super class super async getters")
-        return (await this.DBAlarmData()).alarmTime;
-    }
-    async alarmDuration() {
-        console.log("super class super async getters")
-        return (await this.DBAlarmData()).duration;
-    }
-    async alarmTimerString(key) {
-        console.log("super class super async getters")
-        if (key == 'long') {
-            return (await this.DBAlarmData()).timerString;
-        } else if (key == 'ui') {
-            return (await this.DBAlarmData()).timerString.substring(5, 16).replace('T', '  ')
-        }
-        return (await this.DBAlarmData()).timerString.substring(0, 16).replace('T', ' ');
-    }
-
-    replyUntilAlarm(alarmId) {
-        // const __ = this.translator;
-        // const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
-        // const timerString = data.timerString.substring(5, 16).replace('T', '  ')
-        // const untilAlarm = Number.parseInt(Date.now()) - Number.parseInt(timerString)
-        // console.log(Date.now(), timerString, Number.parseInt(Date.now()), Number.parseInt(timerString))
-        // const d = new Date(untilAlarm)
-        // this.replyText(__('reply.alarmScheduled', this.alarmId, timerString, d.getUTCDay() - 4, d.getUTCHours(), d.getUTCMinutes())); // reply.alarmScheduled //NOT SURE WHY IT'S MINUS 4
-        this.replyText(`TODO replyUntilAlarm(${alarmId})`);
-    }
     ////////////////// CHATBOT TRANSFORMER /////////////////////
 
     abort() {  // go to default chatbot
@@ -560,6 +505,17 @@ class AlarmBase extends BaseDbUserChatBot {
 
     acquireAlarmId() {
         return `alarm_${this.topLevelData.alarmCounter++}`;
+    }
+
+    replyUntilAlarm(alarmId) {
+        // const __ = this.translator;
+        // const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
+        // const timerString = data.timerString.substring(5, 16).replace('T', '  ')
+        // const untilAlarm = Number.parseInt(Date.now()) - Number.parseInt(timerString)
+        // console.log(Date.now(), timerString, Number.parseInt(Date.now()), Number.parseInt(timerString))
+        // const d = new Date(untilAlarm)
+        // this.replyText(__('reply.alarmScheduled', this.alarmId, timerString, d.getUTCDay() - 4, d.getUTCHours(), d.getUTCMinutes())); // reply.alarmScheduled //NOT SURE WHY IT'S MINUS 4
+        this.replyText(`TODO replyUntilAlarm(${alarmId})`);
     }
 
     async alarmOneAsync(alarmId) {
@@ -701,7 +657,6 @@ class AlarmSetter extends AlarmBase {
             await bot.alarmAllAsync();
             return bot.generateQuickRepliesAsync();
         }
-
 
         return super.reactTextAsync(...arguments);
     }
