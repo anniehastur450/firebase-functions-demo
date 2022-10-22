@@ -645,6 +645,10 @@ class AlarmWatcher extends AlarmBase {
             });
         }
         // TODO sort
+        /* notice: this is not sort */
+        if (this.subData.watchOrder == '-') {
+            alarms.reverse();
+        }
 
         let __log_i = 0;
         for (let {alarmId, alarmData} of alarms) {
