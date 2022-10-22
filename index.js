@@ -29,13 +29,17 @@ const project = process.env.GCLOUD_PROJECT;
 
 ////////////////// LINE /////////////////////
 const line = require("@line/bot-sdk");
-const client = new line.Client(functions.config().secrets.lineClientConfig)
+const client = new line.Client(functions.config().secrets.lineClientConfig);
 
 ////////////////// I18N /////////////////////
 const i18n = require('./i18n');
 
 ////////////////// FLEX MESSAGE /////////////////////
 const flexs = require('./flex-message');
+
+////////////////// GLOBAL VARIABLES /////////////////////
+var protocol = null;  // should be https
+var host = null;      // the domain name
 
 // quickReply has 1 extra attribute => "quickReply"
 // https://developers.line.biz/en/docs/messaging-api/using-quick-reply/#set-quick-reply-buttons
@@ -210,6 +214,7 @@ class TextMessage {
     }
 
 }
+
 class AudioMessage {
     constructor(url, duration) {
         this.url = url;
@@ -224,6 +229,7 @@ class AudioMessage {
         }
     }
 }
+
 class FlexMessage {
     constructor(flex, altText = 'this is a flex message') {
         this.flex = flex;
@@ -463,7 +469,7 @@ class BaseDbUserChatBot {
         return this.belongTo.setHolder('alarm-watcher').reactPostback();
     }
 
-    ////////////////// EMPTY CHATBOT SENDS /////////////////////
+    ////////////////// EMPTY CHATBOT REACTS /////////////////////
 
     onAbort() {  // subclass override this to handle onAbort
         /* return set holder clear true or false, default clear = true */
@@ -488,7 +494,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
     static NAME = register(null, this);
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactText(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
@@ -615,7 +621,7 @@ class AlarmWatcher extends BaseDbUserChatBot {
                 console.log("alarm-replier")
                 return this.belongTo.setHolder('alarm-replier').reactPostback(data);
             }
-            else if (data.includes('see-all')){
+            else if (data.includes('see-all')) {
                 return this.belongTo.setHolder('alarm-replier').reactPostback(data);
             }
         }
@@ -629,7 +635,7 @@ class AlarmSetter extends BaseDbUserChatBot {
     // only this class, using alarm id don't need to call super method
     static NAME = register('alarm-setter', this);
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostback(data, params) {
         const stat = this.stat;
@@ -732,7 +738,7 @@ class LangSelector extends BaseDbUserChatBot {
 
     static NAME = register('lang-selector', this);
 
-    ////////////////// CHATBOT SENDS /////////////////////
+    ////////////////// CHATBOT REACTS /////////////////////
 
     async reactPostback(data, params) {
         const stat = this.stat;
@@ -913,7 +919,7 @@ class DbUser {
                 user: this.userId,
                 audio: filename,
                 duration: duration,
-                datetime: this.parseDatetime(event.timestamp),
+                __friendly_time: this.toDatetimeString(event.timestamp),
                 alarmTime: null,
                 alarmId: null,
                 timestamp: this.timestamp
@@ -927,7 +933,8 @@ class DbUser {
 
     async onPostback() {
         const event = this.event;
-        console.log("Postback: ", event.postback.data, "\n\n")
+        console.log("onPostback", event.postback, "\n\n")
+
         await this.chatbot.reactPostback(event.postback.data, event.postback.params);
         return this.replyMessage();
     }
@@ -962,8 +969,10 @@ class DbUser {
         }
     }
 }
-var host //global var
+
 exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
+    protocol = request.protocol;
+    host = request.get('host');
 
     // decipher Webhook event sent by LineBot, that triggered by every user input
 
@@ -971,7 +980,7 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
     // line sdk types https://github.com/line/line-bot-sdk-nodejs/blob/master/lib/types.ts
     /** @type {line.WebhookRequestBody} */
     const body = request.body;
-    host = request.get('host')
+
     try {
         console.log('\n\nevents length:', body.events.length);
 
