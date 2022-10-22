@@ -323,10 +323,6 @@ class BaseDbUserChatBot {
         return this.constructor.NAME;
     }
 
-    get userId() {
-        return this.belongTo.userId;
-    }
-
     get stat() {
         return this.belongTo.storedData;
     }
@@ -345,7 +341,7 @@ class BaseDbUserChatBot {
 
     get audio_filepathname() {
         // olny place where filepathname created
-        return `${this.userId}/${this.stat.holderData.audio}`;
+        return this.stat.holderData.audio;
     }
 
     get watchOrder() {
@@ -471,7 +467,7 @@ class BaseDbUserChatBot {
     }
 
     replyAlarmWatcher() {
-        return this.belongTo.setHolder('alarm-watcher').reactPostback();
+        return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync();
     }
 
     ////////////////// EMPTY CHATBOT REACTS /////////////////////
@@ -481,16 +477,16 @@ class BaseDbUserChatBot {
         return true;
     }
 
-    async reactText(text, tag) {
-        return this.abort().reactText(...arguments);
+    async reactTextAsync(text, tag) {
+        return this.abort().reactTextAsync(...arguments);
     }
 
-    async reactAudio(filename) {
-        return this.abort().reactAudio(...arguments);
+    async reactAudioAsync(filename) {
+        return this.abort().reactAudioAsync(...arguments);
     }
 
-    async reactPostback(data, params) {
-        return this.abort().reactPostback(...arguments);
+    async reactPostbackAsync(data, params) {
+        return this.abort().reactPostbackAsync(...arguments);
     }
 
 }
@@ -501,7 +497,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
     ////////////////// CHATBOT REACTS /////////////////////
 
-    async reactText(text, tag) { /* user text, and corresponding tag */
+    async reactTextAsync(text, tag) { /* user text, and corresponding tag */
         const stat = this.stat;
         const __ = this.translator;
 
@@ -514,14 +510,14 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
         return this.replyText(__('reply.hellomsg', text));
     }
 
-    async reactAudio(filename) {
+    async reactAudioAsync(filename) {
         const stat = this.stat;
         const __ = this.translator;
 
         return this.belongTo.setHolder('alarm-setter').setAudio(filename);
     }
 
-    async reactPostback(data, params) {
+    async reactPostbackAsync(data, params) {
         const stat = this.stat;
         const __ = this.translator;
         let prefix = 'flex,edit=';
@@ -529,7 +525,7 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
             if (!params?.datetime) {
                 console.warn('unexpected no datetime');
             } else {
-                return this.belongTo.setHolder('alarm-watcher').reactPostback(data, params)
+                return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync(data, params)
             }
         }
 
@@ -541,7 +537,7 @@ class AlarmReplier extends BaseDbUserChatBot {
 
     static NAME = register('alarm-replier', this);
 
-    async reactPostback(data, params) {
+    async reactPostbackAsync(data, params) {
         const stat = this.stat;
         console.log("alarm-replier, pbData: ", data)
         const alarmId = data.split(',')[1]
@@ -558,7 +554,7 @@ class AlarmReplier extends BaseDbUserChatBot {
             await this.#_replyAllFlexAlarms()
         }
 
-        return this.belongTo.setHolder('alarm-watcher').reactPostback();
+        return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync();
     }
 
     async #_replyAllFlexAlarms() {
@@ -599,7 +595,7 @@ class AlarmWatcher extends BaseDbUserChatBot {
         this.stat.watchOrder == '+' ? this.stat.watchOrder = '-' : this.stat.watchOrder = '+';
     }
 
-    async reactPostback(data, params = '') {
+    async reactPostbackAsync(data, params = '') {
         const stat = this.stat;
         const __ = this.translator;
 
@@ -624,10 +620,10 @@ class AlarmWatcher extends BaseDbUserChatBot {
             }
             else if (data.includes('alarm_id,')) {
                 console.log("alarm-replier")
-                return this.belongTo.setHolder('alarm-replier').reactPostback(data);
+                return this.belongTo.setHolder('alarm-replier').reactPostbackAsync(data);
             }
             else if (data.includes('see-all')) {
-                return this.belongTo.setHolder('alarm-replier').reactPostback(data);
+                return this.belongTo.setHolder('alarm-replier').reactPostbackAsync(data);
             }
         }
 
@@ -642,7 +638,7 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     ////////////////// CHATBOT REACTS /////////////////////
 
-    async reactPostback(data, params) {
+    async reactPostbackAsync(data, params) {
         const stat = this.stat;
         this.pbData = data;
         const __ = this.translator;
@@ -669,11 +665,11 @@ class AlarmSetter extends BaseDbUserChatBot {
             this.replyText(__('reply.okay'));
             return this.abort();
         } else if (data == 'alarm-watcher' || data == 'sort-changer') {
-            return this.belongTo.setHolder('alarm-watcher').reactPostback(data);
+            return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync(data);
         }
 
 
-        return super.reactText(...arguments);
+        return super.reactTextAsync(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
@@ -704,7 +700,7 @@ class AlarmSetter extends BaseDbUserChatBot {
 
     async #_save() {
         const alarmData = this.alarmData = this.#generateAlarmData(this.alarmData);  // for recalculate timerString
-        await setAudioMetadata(`${this.userId}/${alarmData.audio}`, alarmData.alarmTime, this.alarmId)
+        await setAudioMetadata(alarmData.audio, alarmData.alarmTime, this.alarmId)
         return this.db.doc(this.alarmIdString).set(alarmData);
     }
 
@@ -747,7 +743,7 @@ class LangSelector extends BaseDbUserChatBot {
 
     ////////////////// CHATBOT REACTS /////////////////////
 
-    async reactPostback(data, params) {
+    async reactPostbackAsync(data, params) {
         const stat = this.stat;
         const __ = this.translator;
 
@@ -762,7 +758,7 @@ class LangSelector extends BaseDbUserChatBot {
             return this.abort();
         }
 
-        return super.reactPostback(...arguments);
+        return super.reactPostbackAsync(...arguments);
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
@@ -905,7 +901,7 @@ class DbUser {
         if (this.storedData.tags.hasOwnProperty(userText)) {
             tag = this.storedData.tags[userText];
         }
-        await this.chatbot.reactText(userText, tag);
+        await this.chatbot.reactTextAsync(userText, tag);
         return this.replyMessage();
     }
 
@@ -916,12 +912,11 @@ class DbUser {
         // TODO: send reply and download/upload simultaneously
         var duration = event.message.duration;
         var msgId = event.message.id;
-        var filepathname = `${this.userId}/audio_${msgId}.m4a`;
-        var filename = `audio_${msgId}.m4a`;
+        var filename = `${this.userId}/audio_${msgId}.m4a`;
         var stream = await client.getMessageContent(msgId);
 
         /* upload audio */
-        await uploadStreamFile(stream, filepathname,
+        await uploadStreamFile(stream, filename,
             {
                 user: this.userId,
                 audio: filename,
@@ -934,7 +929,7 @@ class DbUser {
         );
 
         /* reply message */
-        await this.chatbot.reactAudio(filename);
+        await this.chatbot.reactAudioAsync(filename);
         return this.replyMessage();
     }
 
@@ -942,7 +937,7 @@ class DbUser {
         const event = this.event;
         console.log("onPostback", event.postback, "\n\n")
 
-        await this.chatbot.reactPostback(event.postback.data, event.postback.params);
+        await this.chatbot.reactPostbackAsync(event.postback.data, event.postback.params);
         return this.replyMessage();
     }
 
@@ -1095,24 +1090,24 @@ async function getStorageFilesWithIndex(belongTo, idx) {
 
 /////////////////////////////// PROCESS AUDIO MSG ///////////////////////////////
 
-async function uploadStreamFile(stream, filepathname, customMetadata) {
-    var file = bucket.file(filepathname);
+async function uploadStreamFile(stream, filename, customMetadata) {
+    var file = bucket.file(filename);
     var writeStream = file.createWriteStream({
         contentType: 'auto',
         metadata: {
             metadata: customMetadata
         }
     });
+
     // see https://googleapis.dev/nodejs/storage/latest/File.html#createWriteStream
     await new Promise((resolve, reject) => {
-        // console.log(`uploading ${filepathname}...`);
+        console.log(`uploading ${filename}...`);
         stream.pipe(writeStream)
             .on('error', reject)
             .on('finish', resolve);
     });
-    let filepath = filepathname.substring(0, filepathname.lastIndexOf('/'))
-    let filename = filepathname.substring(filepathname.lastIndexOf('/') + 1, filepathname.length)
-    // console.log(`done uploading ${filename} to ./${filepath}/.`);
+
+    console.log(`done uploading ${filename}.`);
 }
 
 async function uploadAlarmToDatebase(belongTo, filepathname) {
