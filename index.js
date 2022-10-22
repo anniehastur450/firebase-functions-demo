@@ -423,25 +423,6 @@ class BaseDbUserChatBot {
         return (await this.DBAlarmData()).timerString.substring(0, 16).replace('T', ' ');
     }
 
-    async generateAlarmWatcherQuickReplies() {
-        /* showing all alarms in QuickReplies format, with sorting feature */
-        const __ = this.translator;
-        const size = await getDocLatestIdx(this.belongTo, 'alarms', false, false)
-
-        for (let i = 0; i < size; i++) {
-            var idxDigit
-            this.watchOrder == '+' ? idxDigit = i + 1 : idxDigit = size - i;
-            console.log('inner:　', i, "idxDigit: ", idxDigit)
-            const data = (await this.db.doc(printf("%02d", idxDigit)).get()).data()
-            const timerString = data.timerString.substring(5, 16).replace('T', '  ')
-            var label = `⏰ ${idxDigit},  ${timerString}`
-
-            this.addQuickReply(new PostbackAction(`alarm_id,${idxDigit}`, label));
-        }
-        this.addQuickReply(new PostbackAction('sort-changer', __('label.seeAlarmsOrder')));
-        this.addQuickReply(new PostbackAction('see-all', __('label.seeAllAlarms')));
-    }
-
     replyUntilAlarm(alarmId) {
         // const __ = this.translator;
         // const data = (await this.db.doc(printf("%02d", alarmId)).get()).data()
@@ -572,6 +553,11 @@ class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logi
 }
 
 class AlarmBase extends BaseDbUserChatBot {
+
+    get db() {
+        return this.belongTo.db.collection('alarms');
+    }
+
     acquireAlarmId() {
         return `alarm_${this.topLevelData.alarmCounter++}`
     }
@@ -671,14 +657,39 @@ class AlarmWatcher extends AlarmBase {
             }
         }
 
-        await this.generateAlarmWatcherQuickReplies();
+        await this.generateQuickRepliesAsync();
         return this.replyText('...arguments');
     }
 
     /* --------------- CHATBOT SELF OWNED ------------------ */
 
     async generateQuickRepliesAsync() {
-        this.addQuickReplyText('TODO watcher')
+        /* showing all alarms in QuickReplies format, with sorting feature */
+        const __ = this.translator;
+        const query = await this.db.get();
+
+        const alarms = [];  // list of alarmData
+        for (let doc of query.docs) {
+            alarms.push({
+                alarmId: doc.id,
+                alarmData: doc.data(),
+            });
+        }
+        // TODO sort
+
+        let __log_i = 0;
+        for (let {alarmId, alarmData} of alarms) {
+            /* the datetime here looks like 2022-10-22T15:29:00.000+08:00 */
+            let datetime = this.belongTo.toDatetimeString(alarmData.alarmTime);
+            let abbr = datetime.replace(/^....-(..-..)T(..:..).*$/, '$1 $2');
+            console.log(`${__log_i++}.`, alarmId, 'datatime', datetime, 'abbr', abbr);
+
+            let idxDigit = alarmId.replace(/^alarm_/, '')
+            let label = `⏰ ${idxDigit}, ${abbr}`
+            this.addQuickReply(new PostbackAction(`alarm-watcher,alarm=${alarmId}`, label));
+        }
+        this.addQuickReply(new PostbackAction('alarm-watcher,seeAlarmsOrder', __('label.seeAlarmsOrder')));
+        this.addQuickReply(new PostbackAction('alarm-watcher,seeAllAlarms', __('label.seeAllAlarms')));
     }
 
 }
@@ -741,8 +752,6 @@ class AlarmSetter extends AlarmBase {
 
         await this.#_save();
         this.replyUntilAlarm(this.subData.alarmId);
-        // await this.generateAlarmWatcherQuickReplies(); // TODO: to be removed
-        // this.belongTo.setHolder('alarm-watcher'); // TODO: to be removed
     }
 
     async #_save() {
