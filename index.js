@@ -512,7 +512,7 @@ class BaseDbUserChatBot {
 
 }
 
-class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out of reply logic */
+class DefaultChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out of reply logic */
 
     static NAME = register(null, this);
 
@@ -554,7 +554,9 @@ class ChatBot extends BaseDbUserChatBot {  /* take the db save/store logic out o
 
 }
 
-class AlarmReplier extends BaseDbUserChatBot {
+class AlarmBase extends BaseDbUserChatBot {}
+
+class AlarmReplier extends AlarmBase {
 
     static NAME = register('alarm-replier', this);
 
@@ -609,7 +611,7 @@ class AlarmReplier extends BaseDbUserChatBot {
 
 }
 
-class AlarmWatcher extends BaseDbUserChatBot {
+class AlarmWatcher extends AlarmBase {
     static NAME = register('alarm-watcher', this);
 
     #changeAlarmOrder() {
@@ -653,7 +655,7 @@ class AlarmWatcher extends BaseDbUserChatBot {
     }
 }
 
-class AlarmSetter extends BaseDbUserChatBot {
+class AlarmSetter extends AlarmBase {
     // only this class, using alarm id don't need to call super method
     static NAME = register('alarm-setter', this);
 
@@ -685,7 +687,7 @@ class AlarmSetter extends BaseDbUserChatBot {
         } else if (data == 'alarm-setter,noThanks') {
             this.replyText(__('reply.okay'));
             return this.abort();
-        } else if (data == 'alarm-watcher' || data == 'sort-changer') {
+        } else if (data == 'alarm-setter,seeAlarms' || data == 'sort-changer') {
             return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync(data);
         }
 
@@ -734,13 +736,13 @@ class AlarmSetter extends BaseDbUserChatBot {
         stat.holderData = {
             audio: filename,
             alarmTime: null,
-            state: 'receivedAudio'
+            state: 'userSentAudio'
         };
-        this.replyText(__('reply.receivedAudio'));
+        this.replyText(__('reply.userSentAudio'));
         this.addQuickReply(
             new DatetimePicker('alarm-setter', __('label.pickATime')),
             new PostbackAction('alarm-setter,noThanks', __('label.noThanks')),
-            new PostbackAction('alarm-watcher', __('label.seeAlarms'))
+            new PostbackAction('alarm-setter,seeAlarms', __('label.seeAlarms'))
         );
         // return this.belongTo.setHolder('alarm-watcher');
     }
@@ -814,7 +816,7 @@ class LangSelector extends BaseDbUserChatBot {
 // or https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#typedef-callback-and-param
 /**
  * Possible chatbots.
- * @typedef {(ChatBot & AlarmSetter & AlarmWatcher & AlarmReplier & LangSelector)} ChatBotLike
+ * @typedef {(DefaultChatBot & AlarmSetter & AlarmWatcher & AlarmReplier & LangSelector)} ChatBotLike
  */
 
 class DbUser {

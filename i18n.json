@@ -3,9 +3,9 @@
     "reply.chosenLang.zh": "已切換到中文",
     "reply.chosenLang.jp": "日本語に切り替えました。",
 
-    "reply.receivedAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
-    "reply.receivedAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
-    "reply.receivedAudio.jp": "音声メッセージを送信したようです。 アラームとして設定しますか？",
+    "reply.userSentAudio.en": "You appear to have sent an audio message. Would you like to set it as an alarm?",
+    "reply.userSentAudio.zh": "你似乎發送了一條語音消息，想要把它設定做鬧鐘嗎？",
+    "reply.userSentAudio.jp": "音声メッセージを送信したようです。 アラームとして設定しますか？",
 
     "reply.youHaveSet.jp": "%s を設定しました:\n%s",
 
