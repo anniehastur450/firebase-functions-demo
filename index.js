@@ -696,8 +696,10 @@ class AlarmSetter extends AlarmBase {
         } else if (data == 'alarm-setter,noThanks') {
             this.replyText(__('reply.okay'));
             return this.abort();
-        } else if (data == 'alarm-setter,seeAlarms' || data == 'sort-changer') {
-            return this.belongTo.setHolder('alarm-watcher').reactPostbackAsync(data);
+        } else if (data == 'alarm-setter,seeAlarms') {
+            let bot = this.belongTo.setHolder('alarm-watcher');
+            await bot.alarmAllAsync();
+            return bot.generateQuickRepliesAsync();
         }
 
 
