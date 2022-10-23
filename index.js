@@ -344,6 +344,9 @@ async function startProcessing(event, topDb) {
                 },
                 'alarm-setter,seeAlarms': () => {
                     chatbot.changeTo('alarm-watcher');
+                },
+                'flex,viewAlarms': () => {
+                    chatbot.changeTo('alarm-watcher');
                 }
             }
         }).canHandleDatetimePicker({
@@ -356,6 +359,25 @@ async function startProcessing(event, topDb) {
                         audio,
                         alarmTime,
                         version: 0,  // version is edited count
+                        __friendly_time: DateUtility.toDatetimeString(alarmTime, dbData.timezone),
+                    });
+                    replyUntilAlarm(alarmId);
+                    chatbot.changeTo('alarm-watcher');
+                }
+            },
+            startsWith: {
+                'flex,edit=': async (alarmId, datetime) => {
+                    let {
+                        audio,
+                        alarmTime,
+                        version,
+                    } = (await db.doc(alarmId).get()).data();  // this is alarmData
+                    alarmTime = DateUtility.parseDatetime(datetime, dbData.timezone);
+
+                    await db.doc(alarmId).set({
+                        audio,
+                        alarmTime,
+                        version: version + 1,  // version is edited count
                         __friendly_time: DateUtility.toDatetimeString(alarmTime, dbData.timezone),
                     });
                     replyUntilAlarm(alarmId);

@@ -151,7 +151,7 @@ function findHandler(handlers, text, types) {  // types is array like ['match', 
     /* fall back to default */
     if (defaults.length == 0) {
         console.warn(`no default handler for ${handlers.userAction} ${text}`);
-        return;
+        return null;
     }
     if (defaults.length > 1) {
         console.warn(`more than one (found ${defaults.length}) default ${handlers.userAction} handler, mistaken?`);
@@ -249,6 +249,7 @@ exports.ofChatBot = function () {
                 /* handle text async */
                 await (async () => {
                     const res = findHandler(handlers, text, ['match']);
+                    if (!res) return;
                     await preHook(res.name);
                     await res.func(...res.args);
                     await postHook(res.name);
@@ -264,6 +265,7 @@ exports.ofChatBot = function () {
                     /* handle datetime picker async */
                     await (async () => {
                         const res = findHandler(handlers, data, ['match', 'startsWith']);
+                        if (!res) return;
                         await preHook(res.name);
                         await res.func(...res.args, datetime);
                         await postHook(res.name);
@@ -276,6 +278,7 @@ exports.ofChatBot = function () {
                     /* handle postback async */
                     await (async () => {
                         const res = findHandler(handlers, data, ['match', 'startsWith']);
+                        if (!res) return;
                         await preHook(res.name);
                         await res.func(...res.args);
                         await postHook(res.name);
@@ -291,6 +294,7 @@ exports.ofChatBot = function () {
                 /* handle audio async */
                 await (async () => {
                     const res = findHandler(handlers, null, []);
+                    if (!res) return;
                     await preHook(res.name);
                     await res.func(msgId, duration);
                     await postHook(res.name);
@@ -336,11 +340,11 @@ exports.ofReplies = function () {
                 text: text,
             });
         },
-        audio() {
+        audio(url, duration) {
             messages.push({
                 type: 'audio',
-                originalContentUrl: this.url,
-                duration: this.duration
+                originalContentUrl: url,
+                duration: duration
             });
         },
         flex(flex) {
