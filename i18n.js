@@ -15,9 +15,11 @@ try {
     console.error(e);
 }
 
-exports.get = function(key) {
+function get(key) {
     return i18nContent[key];
 }
+
+exports.getTag = get;
 
 exports.translate = function(lang) {
     var funcObj = function(tag, ...arg) {
@@ -29,6 +31,6 @@ exports.translate = function(lang) {
         return key;
     }
     funcObj.lang = lang;
-    funcObj.get = exports.get;
+    funcObj.get = get;
     return funcObj;
 }

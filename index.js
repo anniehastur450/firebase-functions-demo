@@ -41,6 +41,8 @@ const flexs = require('./flex-message');
 var protocol = null;  // should be https
 var host = null;      // the domain name
 
+const dirtyJobsBehind = require('./dirtyJobsBehind.js');
+
 /* datetime related */
 // see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse
 class DateUtility {
@@ -52,6 +54,7 @@ class DateUtility {
         return sign + printf('%02d:%02d', hr, totalmin % 60);
     }
     static toDatetimeString(timestamp, timezone) {
+        /* returning datetime format look like 2022-10-22T15:29:00.000+08:00 */
         var s = new Date(timestamp + timezone * 3600 * 1000).toISOString();
         return s.slice(0, -1) + this.suffix(timezone);
     }
@@ -331,7 +334,7 @@ function throwRegisterFailure(theClass) {
         + `    static NAME = ${register.name}('{{THE_BOT_NAME}}', this);`);
 }
 
-const langs = i18n.get('langs');
+const langs = i18n.getTag('langs');
 
 class BaseDbUserChatBot {
     /**
@@ -590,7 +593,7 @@ class AlarmWatcher extends AlarmBase {
         }
 
         let __log_i = 0;
-        for (let {alarmId, alarmData} of alarms) {
+        for (let { alarmId, alarmData } of alarms) {
             /* the datetime here looks like 2022-10-22T15:29:00.000+08:00 */
             let datetime = this.belongTo.toDatetimeString(alarmData.alarmTime);
             let abbr = datetime.replace(/^....-(..-..)T(..:..).*$/, '$1 $2');
@@ -702,55 +705,6 @@ class AlarmSetter extends AlarmBase {
 
 }
 
-class LangSelector extends BaseDbUserChatBot {
-
-    static NAME = register('lang-selector', this);
-
-    ////////////////// CHATBOT REACTS /////////////////////
-
-    async reactPostbackAsync(data, params) {
-        const __ = this.translator;
-
-        var prefix = 'lang-selector,';
-        if (data.startsWith(prefix)) {
-            const lang = data.slice(prefix.length);
-            if (langs.includes(lang)) {
-                this.#setLang(lang);
-            } else {
-                console.warn(`unknown lang ${lang}`);
-            }
-            return this.abort();
-        }
-
-        return super.reactPostbackAsync(...arguments);
-    }
-
-    /* --------------- CHATBOT SELF OWNED ------------------ */
-
-    #setLang(lang) {
-        const __ = this.translator;
-
-        this.topLevelData.lang = lang;
-        __.lang = lang;
-        this.replyText(__('reply.chosenLang'));
-    }
-
-    changeLang() {
-        // return this.setLang(this.stat.lang != 'zh' ? 'zh' : 'en');
-
-        const __ = this.translator;
-
-        this.replyText(__('reply.chooseLang'));
-        for (const lang of langs) {
-            var displayText = i18n.get(`lang.${lang}`);
-            this.addQuickReply(
-                new PostbackAction(`lang-selector,${lang}`, displayText)
-            );
-        }
-    }
-
-}
-
 // @typedef description see https://jsdoc.app/tags-typedef.html
 // or https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#typedef-callback-and-param
 /**
@@ -759,75 +713,6 @@ class LangSelector extends BaseDbUserChatBot {
  */
 
 class DbUser {
-    /**
-     * @param {line.WebhookEvent} event
-     */
-    constructor(event) {
-        this.event = event;
-        this.userId = event.source.userId ?? unexpected('null userId');
-        this.replyToken = event.replyToken;
-        this.replies = [];
-        this.quickReplies = [];
-        this.__err_transform_count = 0;
-    }
-
-    // backgroundJobs = [];
-
-    get db() {
-        return db.collection('users').doc(this.userId);
-    }
-
-    #__;
-    get translator() {
-        if (!this.#__) {
-            var userLang = this.dbData.lang ?? 'en';
-            this.#__ = i18n.translate(userLang);
-        }
-        return this.#__;
-    }
-
-    /**
-     * @returns {ChatBotLike}
-     */
-    get chatbot() {
-        /* return chatbot by holder, null is deafult chatbot */
-        return this.#getChatBot(this.dbData.holder ?? null);
-    }
-    #cachedBots = {};
-    #getChatBot(name) {
-        if (!this.#cachedBots[name]) {
-            this.#cachedBots[name] = createChatBot(name, this);
-        }
-        return this.#cachedBots[name];
-    }
-
-    setHolder(name, clear = true) {
-        this.__err_transform_count++;  /* accidentally infinite loop check */
-        if (this.__err_transform_count > 100) {
-            console.error('transform too many times!')
-            console.error('is your program stuck?')
-        }
-
-        this.dbData.holder = name;
-        if (clear) {
-            /* TODO */
-        }
-        return this.chatbot;  // this.chatbot becomes new holder
-    }
-
-    /* ------- parseDatetime ------- */
-    /**
-     * @param {string} datetime
-     * @returns {number} timestamp
-     */
-    parseDatetime(datetime) {
-        /* datetime format look like 2017-12-25T01:00 */
-        return DateUtility.parseDatetime(datetime, this.dbData.timezone);
-    }
-    toDatetimeString(timestamp) {
-        return DateUtility.toDatetimeString(timestamp, this.dbData.timezone);
-    }
-
     async save() {
         return await this.db.set(this.dbData);
     }
@@ -898,35 +783,159 @@ class DbUser {
         return this.replyMessage();
     }
 
-    async init() {  // called by startProcessing()
-        /* the data in db if exists else empty obj */
-        var userData = (await this.db.get()).data() ?? {};
-        /** @type {ReturnType<typeof TopLevelData.default>} */
-        this.dbData = applyDefault(userData, TopLevelData.default());
-    }
+}
 
-    async startProcessing() {
-        await this.init();
+/**
+ * @param {line.WebhookEvent} event
+ * @param {admin.firestore.Firestore} topDb
+ */
+async function startProcessing(event, topDb) {
+    const userId = event.source.userId ?? unexpected('null userId');
+    const db = topDb.collection('users').doc(userId);
+    /** @type {ReturnType<typeof TopLevelData.default>} */
+    const dbData = applyDefault((await db.get()).data() ?? {}, TopLevelData.default());
+    const __ = i18n.translate(dbData.lang ?? 'en');
 
-        const event = this.event;
+    const replies = dirtyJobsBehind.ofReplies();
+    const quickRe = dirtyJobsBehind.ofQuickReplies();
+    const chatbot = dirtyJobsBehind.ofChatBot();
 
-        var userAction;
-        if (event.type == 'message') {
-            userAction = event.message.type;
-        } else if (['postback'].includes(event.type)) {
-            userAction = event.type;
-        } else {
-            return console.warn(`unhandled event type ${event.type}`)
+    /* default chat bot */
+    chatbot('null').canHandleText({
+        match: {
+            'lang': () => {
+                chatbot.changeTo('lang-selector');
+            },
+        },
+        default: (text) => {
+            replies.text(__('reply.hellomsg', text));
+        }
+    });
+
+    /* lang-selector */
+    chatbot('lang-selector').firstThingToDoAfter___changeTo_this___Is(
+        () => {
+            replies.text(__('reply.chooseLang'));
+            for (const lang of langs) {
+                let displayText = __.get(`lang.${lang}`);
+                quickRe.label(displayText).post(`lang-selector,${lang}`);
+            }
+        }
+    ).canHandlePostback({
+        startsWith: {
+            'lang-selector,': (lang) => {
+                if (langs.includes(lang)) {
+                    dbData.lang = lang;
+                    __.lang = lang;
+                    replies.text(__('reply.chosenLang'));
+                } else {
+                    console.warn(`unknown lang ${lang}`);
+                }
+            }
+        }
+    });
+
+    /* alarm scope */
+    if (false) {
+        function acquireAlarmId() {
+            return `alarm_${this.topLevelData.alarmCounter++}`;
         }
 
-        /* onText, onAudio, onPostback */
-        var key = 'on' + firstLetterCaptialize(userAction);
-        if (key in this) {
-            return this[key]();
-        } else {
-            return console.warn(`haven't implement ${key}() method yet`)
+        function replyUntilAlarm(alarmId) {
+            replies.text(`TODO replyUntilAlarm(${alarmId})`);
         }
+
+        /* alarm-setter */
+        chatbot('alarm-setter').canHandleAudio({
+            default: (filename) => {
+                chatbot.saveTheFollowingSubDataForThisChatBot({
+                    audio: filename,
+                    alarmTime: null,
+                    state: 'userSentAudio',
+                    /* db save related */
+                    alarmId: null,
+                    alarmData: null
+                });
+                replies.text(__('reply.userSentAudio'));
+                quickRe.label(__('label.pickATime')).pickDatetime('alarm-setter');
+                quickRe.namespaced(chatbot.giveMeTheNameOfThisChatBot())  // postback prefix is 'alarm-setter,'
+                    .labelsByTranslator(__, 'label.')  // __, tag prefix is 'label.'
+                    .add('noThanks')
+                    .add('seeAlarms')
+                    ;
+            }
+        }).canHandlePostback({
+            namespaced: {
+                match: {
+                    'noThanks': () => {
+                        replies.text(__('reply.okay'));
+                    },
+                    'seeAlarms': () => {
+                        chatbot.changeTo('alarm-watcher');
+                    }
+                }
+            }
+        }).canHandleDatetimePicker({
+            match: {
+                'alarm-setter': async (datetime) => {
+                    const { audio } = chatbot.giveMeTheSubDataForThisChatBot();
+                    const alarmTime = DateUtility.parseDatetime(datetime, dbData.timezone);
+                    const alarmId = acquireAlarmId();
+                    await chatbot.doNowAsync.saveTheFollowingToTheDatabaseThisChatBotToUse({
+                        docId: alarmId,
+                        docData: {
+                            audio,
+                            alarmTime,
+                            version: 0,  // version is edited count
+                            __friendly_time: DateUtility.toDatetimeString(alarmTime, dbData.timezone),
+                        }
+                    });
+                    replyUntilAlarm(alarmId);
+                    chatbot.changeTo('alarm-watcher');
+                }
+            }
+        }).registerDbToUse('alarms');
+
+        /* alarm-watcher */
+        chatbot('alarm-watcher').lastThingToDoIs(
+            () => {
+                /* if replies is empty, make flex message of all alarms */
+
+                /* add quick replies of all alarms*/
+
+            }
+        ).canHandlePostback({
+            namespaced: {
+                match: {
+                    'reverseOrder': () => {
+
+                    },
+                    'seeAllAlarms': () => {
+
+                    }
+                }
+            },
+            startsWith: {
+                'alarm-watcher,alarm=': (alarmId) => {
+
+                }
+            }
+        });
+
     }
+
+    await dirtyJobsBehind.startProcessingAsync({
+        event: event,
+        client: client,
+        replies: replies,
+        quickReplies: quickRe,
+        chatbot: chatbot,
+    });
+
+    /* save db */
+    console.log('save dbData', dbData);
+    await db.set(dbData);
+
 }
 
 exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(async (request, response) => {
@@ -946,17 +955,10 @@ exports.LineMessAPI = functions.region(region).runWith(spec).https.onRequest(asy
         for (const event of body.events) {
             /* process webhook event now */
 
-            var userObj = new DbUser(event);
-            await userObj.startProcessing();
-
-            // await originalProcessing(event, request, response);
-
-            console.log('save storedData', userObj.dbData);
-            await userObj.save();
-
-            return response.status(200).send(request.method);
-
+            await startProcessing(event, db);
         }
+
+        return response.status(200).send(request.method);
 
     } catch (err) {
         if (err instanceof line.HTTPError) {
