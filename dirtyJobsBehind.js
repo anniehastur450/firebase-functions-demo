@@ -15,16 +15,17 @@ class ChatBot {
         return bot.#data;
     }
 
-    static handlers(type, bots) {
+    static handlers(userAction, bots) {
         const ret = [];
         for (const bot of bots) {
-            if (bot.#data.canHandle[type]) {
+            if (bot.#data.canHandle[userAction]) {
                 ret.push({
                     name: bot.#data.name,
-                    opt: bot.#data.canHandle[type],
+                    opt: bot.#data.canHandle[userAction],
                 });
             }
         }
+        ret.userAction = userAction;
         return ret;
     }
 
@@ -78,6 +79,7 @@ class ChatBot {
 
     canHandlePostback(options) {
         /* check support */
+        // const supportedKeys = ['match', 'default', 'startsWith', 'namespaced'];
         const supportedKeys = ['match', 'default', 'startsWith'];
         for (const key of Object.keys(options)) {
             if (!supportedKeys.includes(key)) {
@@ -89,8 +91,14 @@ class ChatBot {
     }
 
     canHandleDatetimePicker(options) {
-        this.#data.canHandle.datetimePicker = options;
-        return this;
+        const supportedKeys = ['match', 'default', 'startsWith'];
+        for (const key of Object.keys(options)) {
+            if (!supportedKeys.includes(key)) {
+                unexpected(`${key} is not in supported keys [${supportedKeys}]`);
+            }
+        }
+
+        return this.#setCanHandle('datetimePicker', this.canHandleDatetimePicker.name, options);
     }
 
     registerDbToUse(options) {
@@ -109,43 +117,73 @@ class ChatBot {
     }
 }
 
-async function matchHandlerAsync(text, match, name, preHook, postHook) {
-    if (!match) return;
-    for (const key in match) {
-        if (text == key) {
-            await preHook(name);
-            await match[key](text);
-            await postHook(name);
-            return true;
+function findHandler(handlers, text, types) {  // types is array like ['match', 'startsWith']
+    /*
+    this function will return the following object
+    {
+        func: null, // the found function
+        args: [], // func args
+        name: null, // bot name
+        type: null, // 'match', 'startsWith' or 'default'
+    }
+
+    */
+
+    const a = {
+        match: (match) => {
+            if (!match) return;
+            for (const key in match) {
+                if (text == key) {
+                    return {
+                        func: match[key],
+                        args: [],
+                    };
+                }
+            }
+        },
+        startsWith: (startsWith) => {
+            if (!startsWith) return;
+            for (const key in startsWith) {
+                if (text.startsWith(key)) {
+                    let subText = text.slice(key.length);
+                    return {
+                        func: startsWith[key],
+                        args: [subText],
+                    };
+                }
+            }
+        }
+    };
+
+    const defaults = [];
+    for (const { name, opt } of handlers) {  // opt.match, opt.startsWith, opt.default
+        for (const type of types) {
+            let r;
+            if (r = a[type](opt[type])) {
+                r.name = name;
+                r.type = type;
+                return r;
+            }
+        }
+        if (opt.default) {
+            defaults.push({ name, func: opt.default });
         }
     }
-}
 
-async function startsWithHandlerAsync(text, startsWith, name, preHook, postHook) {
-    if (!startsWith) return;
-    for (const key in startsWith) {
-        if (text.startsWith(key)) {
-            await preHook(name);
-            let subText = text.slice(key.length);
-            await startsWith[key](subText);
-            await postHook(name);
-            return true;
-        }
-    }
-}
-
-async function defaultsHandlerAsync(defaults, text, __err_type, preHook, postHook) {
+    /* fall back to default */
     if (defaults.length == 0) {
-        console.warn(`no default handler for ${__err_type} ${text}`);
+        console.warn(`no default handler for ${handlers.userAction} ${text}`);
         return;
     }
     if (defaults.length > 1) {
-        console.warn(`more than one (found ${defaults.length}) default ${__err_type} handler, mistaken?`);
+        console.warn(`more than one (found ${defaults.length}) default ${handlers.userAction} handler, mistaken?`);
     }
-    const { name, d } = defaults[0];
-    await preHook(name);
-    await d(text);
-    await postHook(name);
+
+    return {
+        ...defaults[0],
+        args: [text],
+        type: 'default',
+    }
 }
 
 ////////////////// CHATBOTS /////////////////////
@@ -232,38 +270,53 @@ exports.ofChatBot = function () {
 
                 /* handle text async */
                 await (async () => {
-                    const defaults = [];
-                    for (const handler of handlers) {
-                        const { name, opt } = handler;
-                        if (await matchHandlerAsync(text, opt.match, name, preHook, postHook)) return;
-                        if (opt.default) {
-                            defaults.push({ name, d: opt.default });
-                        }
-                    }
-                    await defaultsHandlerAsync(defaults, text, 'text', preHook, postHook);
+                    const res = findHandler(handlers, text, ['match']);
+                    await preHook(res.name);
+                    await res.func(...res.args);
+                    await postHook(res.name);
                 })();
             },
             'postback': async () => {
-                const handlers = ChatBot.handlers('postback', bots);
-                const data = event.postback.data;
+                if (event.postback.params?.datetime) {
+                    /* datetime picker */
+                    const handlers = ChatBot.handlers('datetimePicker', bots);
+                    const data = event.postback.data;
+                    const datetime = event.postback.params.datetime;
 
-                /* handle postback async */
-                await (async () => {
-                    const defaults = [];
-                    for (const handler of handlers) {
-                        const { name, opt } = handler;
-                        if (await matchHandlerAsync(data, opt.match, name, preHook, postHook)) return;
-                        if (await startsWithHandlerAsync(data, opt.startsWith, name, preHook, postHook)) return;
-                        if (opt.default) {
-                            defaults.push({ name, d: opt.default });
-                        }
-                    }
-                    await defaultsHandlerAsync(defaults, data, 'postback', preHook, postHook);
-                })();
+                    /* handle datetime picker async */
+                    await (async () => {
+                        const res = findHandler(handlers, data, ['match', 'startsWith']);
+                        await preHook(res.name);
+                        await res.func(...res.args, datetime);
+                        await postHook(res.name);
+                    })();
+                } else {
+                    /* pure postback */
+                    const handlers = ChatBot.handlers('postback', bots);
+                    const data = event.postback.data;
+
+                    /* handle postback async */
+                    await (async () => {
+                        const res = findHandler(handlers, data, ['match', 'startsWith']);
+                        await preHook(res.name);
+                        await res.func(...res.args);
+                        await postHook(res.name);
+                    })();
+                }
+
             },
             'audio': async () => {
-                
+                const handlers = ChatBot.handlers('audio', bots);
+                var msgId = event.message.id;
+                var duration = event.message.duration;
 
+                /* handle audio async */
+                await (async () => {
+                    const res = findHandler(handlers, null, []);
+                    await preHook(res.name);
+                    await res.func(msgId, duration);
+                    await postHook(res.name);
+                })();
             }
         };
 
@@ -347,21 +400,45 @@ class QuickReplyLabel {
             displayText: this.label,
         };
     }
+
+    pickDatetime(data, options) {
+        this.LINE_action = {
+            type: 'datetimepicker',
+            label: this.label,
+            data: data,
+            mode: 'datetime',
+            ...options,
+        };
+    }
 }
 
 exports.ofQuickReplies = function () {
     const labels = [];
 
-    return {
+    const quickRe = {
         label(label) {
             let lb = new QuickReplyLabel(label);
             labels.push(lb);
             return lb;
         },
+        // namespaced(name) {
+        //     return {
+        //         labelsByTranslator(__, prefix) {
+        //             return {
+        //                 add(tag) {
+        //                     quickRe.label(__(prefix + tag)).post(`${name},${tag}`);
+        //                     return this;
+        //                 }
+        //             }
+        //         }
+        //     }
+        // },
         [inner]: {
             labels,
         }
     };
+
+    return quickRe;
 }
 
 ////////////////// START PROCESSING /////////////////////
