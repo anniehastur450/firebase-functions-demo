@@ -243,6 +243,69 @@ async function startProcessing(event, topDb) {
             replies.text(`TODO replyUntilAlarm(${alarmId})`);
         }
 
+        function changeAlarmOrder() {
+            dbData.watchOrder = dbData.watchOrder != '-' ? '-' : '+';
+        }
+
+        async function generateQuickRepliesAsync() {
+            /* showing all alarms in QuickReplies format, with sorting feature */
+            const query = await db.get();
+
+            const alarms = [];  // list of alarmData
+            for (const doc of query.docs) {
+                alarms.push({
+                    alarmId: doc.id,
+                    alarmData: doc.data(),
+                });
+            }
+            // TODO sort
+            /* notice: this is not sort */
+            if (dbData.watchOrder == '-') {
+                alarms.reverse();
+            }
+
+            let __log_i = 0;
+            for (let { alarmId, alarmData } of alarms) {
+                /* the datetime here looks like 2022-10-22T15:29:00.000+08:00 */
+                let datetime = DateUtility.toDatetimeString(alarmData.alarmTime, dbData.timezone);
+                let abbr = datetime.replace(/^....-(..-..)T(..:..).*$/, '$1 $2');
+                console.log(`${__log_i++}.`, alarmId, 'datatime', datetime, 'abbr', abbr);
+
+                let idxDigit = alarmId.replace(/^alarm_/, '');
+                let label = `⏰ ${idxDigit}, ${abbr}`;
+                quickRe.label(label).post(`alarm-watcher,alarm=${alarmId}`);
+            }
+            quickRe.label(__('label.reverseOrder')).post('alarm-watcher,reverseOrder');
+            quickRe.label(__('label.seeAllAlarms')).post('alarm-watcher,seeAllAlarms');
+        }
+
+        async function flexAlarmOneAsync(alarmId) {
+            let doc = await db.doc(alarmId).get();
+
+            let filename = doc.data().audio;
+            let { metadata } = await getFileMetadata(filename);
+            replies.audio(getPubUrl(filename), metadata.duration);
+
+            _replyFlexAlarms([doc]);
+        }
+
+        async function flexAlarmAllAsync() {
+            const query = await db.get();
+            _replyFlexAlarms(query.docs);
+        }
+
+        function _replyFlexAlarms(docs) {
+            const arr = []
+            for (const doc of docs) {
+                let alarmId = doc.id;
+                let alarmData = doc.data();
+
+                let flex = flexs.alarmScheduled(__, alarmData.alarmTime, dbData.timezone, alarmId);
+                arr.push(flex);
+            }
+            replies.flexMulti(arr);
+        }
+
         /* alarm-setter */
         chatbot('alarm-setter').canHandleAudio({
             default: async (msgId, duration) => {
@@ -271,25 +334,10 @@ async function startProcessing(event, topDb) {
                 };
                 replies.text(__('reply.userSentAudio'));
                 quickRe.label(__('label.pickATime')).pickDatetime('alarm-setter');
-                // quickRe.namespaced('alarm-setter')  // postback prefix is 'alarm-setter,'
-                //     .labelsByTranslator(__, 'label.')  // __, tag prefix is 'label.'
-                //     .add('noThanks')
-                //     .add('seeAlarms')
-                //     ;
                 quickRe.label(__('label.noThanks')).post('alarm-setter,noThanks');
                 quickRe.label(__('label.seeAlarms')).post('alarm-setter,seeAlarms');
             }
         }).canHandlePostback({
-            // namespaced: {
-            //     match: {
-            //         'noThanks': () => {
-            //             replies.text(__('reply.okay'));
-            //         },
-            //         'seeAlarms': () => {
-            //             chatbot.changeTo('alarm-watcher');
-            //         }
-            //     }
-            // }
             match: {
                 'alarm-setter,noThanks': () => {
                     replies.text(__('reply.okay'));
@@ -301,7 +349,6 @@ async function startProcessing(event, topDb) {
         }).canHandleDatetimePicker({
             match: {
                 'alarm-setter': async (datetime) => {
-                    // const { audio } = chatbot.giveMeTheSubDataForThisChatBot();
                     const { audio } = dbData.subData['alarm-setter'];
                     const alarmTime = DateUtility.parseDatetime(datetime, dbData.timezone);
                     const alarmId = acquireAlarmId();
@@ -316,30 +363,34 @@ async function startProcessing(event, topDb) {
                 }
             }
         });
-        // .registerDbToUse('alarms');
 
         /* alarm-watcher */
-        chatbot('alarm-watcher').lastThingToDoIs(
-            () => {
+        chatbot('alarm-watcher').lastThingToDo___if_last_changeTo_is_still_this___Is(
+            async () => {
                 /* if replies is empty, make flex message of all alarms */
+                if (replies.size == 0) {
+                    await flexAlarmAllAsync();
+                }
 
                 /* add quick replies of all alarms*/
-
+                await generateQuickRepliesAsync();
             }
         ).canHandlePostback({
-            // namespaced: {
-            //     match: {
-            //         'reverseOrder': () => {
-
-            //         },
-            //         'seeAllAlarms': () => {
-
-            //         }
-            //     }
-            // },
+            match: {
+                'alarm-watcher,reverseOrder': async () => {
+                    changeAlarmOrder();
+                    replies.text(__('reply.chgAlarmsOrder'));
+                    await generateQuickRepliesAsync();
+                },
+                'alarm-watcher,seeAllAlarms': async () => {
+                    await flexAlarmAllAsync();
+                    await generateQuickRepliesAsync();
+                }
+            },
             startsWith: {
-                'alarm-watcher,alarm=': (alarmId) => {
-
+                'alarm-watcher,alarm=': async (alarmId) => {
+                    await flexAlarmOneAsync(alarmId);
+                    await generateQuickRepliesAsync();
                 }
             }
         });

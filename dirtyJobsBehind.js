@@ -44,66 +44,44 @@ class ChatBot {
         this.#data.name = name;
     }
 
-    #setCanHandle(type, fnName, options) {
+    #setCanHandle(userAction, fnName, options) {
         /* check already exist */
-        if (this.#data.canHandle[type]) {
+        if (this.#data.canHandle[userAction]) {
             unexpected(`${fnName} shouldn't be called more than once`)
         }
-        this.#data.canHandle[type] = options;
+        this.#data.canHandle[userAction] = options;
         return this;
     }
 
-    canHandleText(options) {
+    #canHandle(userAction, fnName, options, supportedKeys) {
         /* check support */
-        const supportedKeys = ['match', 'default'];
         for (const key of Object.keys(options)) {
             if (!supportedKeys.includes(key)) {
                 unexpected(`${key} is not in supported keys [${supportedKeys}]`);
             }
         }
 
-        return this.#setCanHandle('text', this.canHandleText.name, options);
+        return this.#setCanHandle(userAction, fnName, options);
+    }
+
+    canHandleText(options) {
+        const supportedKeys = ['match', 'default'];
+        return this.#canHandle('text', this.canHandleText.name, options, supportedKeys);
     }
 
     canHandleAudio(options) {
-        /* check support */
         const supportedKeys = ['default'];
-        for (const key of Object.keys(options)) {
-            if (!supportedKeys.includes(key)) {
-                unexpected(`${key} is not in supported keys [${supportedKeys}]`);
-            }
-        }
-
-        return this.#setCanHandle('audio', this.canHandleAudio.name, options);
+        return this.#canHandle('audio', this.canHandleAudio.name, options, supportedKeys);
     }
 
     canHandlePostback(options) {
-        /* check support */
-        // const supportedKeys = ['match', 'default', 'startsWith', 'namespaced'];
         const supportedKeys = ['match', 'default', 'startsWith'];
-        for (const key of Object.keys(options)) {
-            if (!supportedKeys.includes(key)) {
-                unexpected(`${key} is not in supported keys [${supportedKeys}]`);
-            }
-        }
-
-        return this.#setCanHandle('postback', this.canHandlePostback.name, options);
+        return this.#canHandle('postback', this.canHandlePostback.name, options, supportedKeys);
     }
 
     canHandleDatetimePicker(options) {
         const supportedKeys = ['match', 'default', 'startsWith'];
-        for (const key of Object.keys(options)) {
-            if (!supportedKeys.includes(key)) {
-                unexpected(`${key} is not in supported keys [${supportedKeys}]`);
-            }
-        }
-
-        return this.#setCanHandle('datetimePicker', this.canHandleDatetimePicker.name, options);
-    }
-
-    registerDbToUse(options) {
-
-        return this;
+        return this.#canHandle('datetimePicker', this.canHandleDatetimePicker.name, options, supportedKeys);
     }
 
     firstThingToDoAfter___changeTo_this___Is(func) {
@@ -111,8 +89,8 @@ class ChatBot {
         return this;
     }
 
-    lastThingToDoIs(options) {
-
+    lastThingToDo___if_last_changeTo_is_still_this___Is(func) {
+        this.#data.onHolds = func;
         return this;
     }
 }
@@ -328,6 +306,15 @@ exports.ofChatBot = function () {
 
         /* wait for unfinished promises */
         await Promise.all(pendingPromises);
+
+        console.log('changeToChain', changeToChain);
+        if (changeToChain.length > 0) {
+            const lastBot = changeToChain[changeToChain.length - 1];
+            let fn = ChatBot.data(botsMap[lastBot]).onHolds;
+            if (fn) {
+                await fn();
+            }
+        }
     }
 
     chatbot[inner] = {
@@ -342,12 +329,35 @@ exports.ofChatBot = function () {
 exports.ofReplies = function () {
     const messages = [];
 
-    return {
+    const replies = {
         text(text) {
             messages.push({
                 type: 'text',
                 text: text,
             });
+        },
+        audio() {
+            messages.push({
+                type: 'audio',
+                originalContentUrl: this.url,
+                duration: this.duration
+            });
+        },
+        flex(flex) {
+            messages.push({
+                type: 'flex',
+                altText: 'this is a flex message',
+                contents: flex,
+            });
+        },
+        flexMulti(flexes) {
+            replies.flex({
+                type: 'carousel',
+                contents: flexes,
+            });
+        },
+        get size() {
+            return messages.length;
         },
         [inner]: {
             async processAsync(event, client, labels) {
@@ -382,6 +392,8 @@ exports.ofReplies = function () {
             }
         }
     };
+
+    return replies;
 }
 
 ////////////////// QUICK REPLIES /////////////////////
@@ -433,6 +445,9 @@ exports.ofQuickReplies = function () {
         //         }
         //     }
         // },
+        get size() {
+            return labels.length;
+        },
         [inner]: {
             labels,
         }
